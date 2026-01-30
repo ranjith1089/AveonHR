@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% load static %}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experience Certificate Generator</title>
+    <link rel="stylesheet" href="{% static 'payslip/styles.css' %}" />
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Home
+      </a>
+      <header class="header">
+        <div>
+          <p class="eyebrow">Experience Certificate</p>
+          <h1>Generator</h1>
+          <p class="subtext">Fill the details to generate experience certificate.</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <form method="post" id="experienceForm">
+          {% csrf_token %}
+          <div class="form-grid">
+            {{ form.as_p }}
+          </div>
+          <div class="form-footer">
+            <div class="file-meta">All fields are required.</div>
+            <button type="submit" class="primary">Generate Certificate</button>
+          </div>
+        </form>
+      </section>
+
+      {% if data %}
+      <section class="card">
+        <div class="form-footer">
+          <a class="primary" href="{{ download_url }}" download="{{ download_filename }}">
+            {{ download_label }}
+          </a>
+          <a class="file-meta" href="{{ preview_url }}" target="_blank" rel="noopener noreferrer">
+            Open preview in new tab
+          </a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div id="preview-error" class="error" style="display: none;"></div>
+        <iframe
+          id="preview-frame"
+          title="Experience Certificate PDF"
+          style="width: 100%; height: 720px; border: 1px solid #e5e7eb; border-radius: 12px;"
+        ></iframe>
+      </section>
+
+      <script>
+        const previewUrl = "{{ preview_url }}";
+        const frame = document.getElementById("preview-frame");
+        const errorBox = document.getElementById("preview-error");
+
+        fetch(previewUrl)
+          .then(async (response) => {
+            if (!response.ok) {
+              const text = await response.text();
+              throw new Error(`Preview failed: ${response.status} ${text}`);
+            }
+            return response.blob();
+          })
+          .then((blob) => {
+            const objectUrl = URL.createObjectURL(blob);
+            frame.src = objectUrl;
+          })
+          .catch((error) => {
+            errorBox.textContent = error.message;
+            errorBox.style.display = "block";
+          });
+      </script>
+      {% endif %}
+    </div>
+  </body>
+</html>
+

@@ -1,0 +1,1324 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Iterable
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pandas as pd
+from datetime import date, datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from PIL import Image as PilImage
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+
+@dataclass
+class CompanyInfo:
+    name: str
+    address: str
+    email: str | None = None
+    phone: str | None = None
+
+
+REQUIRED_COLUMNS = {"employee_name", "employee_id", "month"}
+
+COLUMN_ALIASES = {
+    "employee_id": {
+        "employee_id",
+        "emp_id",
+        "employeeid",
+        "emp code",
+        "employee code",
+        "employee no",
+        "employee number",
+        "emp no",
+    },
+    "employee_name": {"employee_name", "employee name", "emp_name", "emp name"},
+    "department": {"department", "dept"},
+    "designation": {"designation", "role"},
+    "gender": {"gender"},
+    "joining_date": {"joining_date", "date_of_joining", "doj", "joining date"},
+    "bank_name": {"bank_name", "bank"},
+    "account_number": {
+        "account_number",
+        "account_no",
+        "a/c",
+        "a/c #",
+        "ac no",
+        "ac_no",
+        "bank account no",
+        "bank account number",
+    },
+    "ifsc_code": {"ifsc_code", "ifsc"},
+    "pan_number": {"pan_number", "pan", "pan no", "pan number"},
+    "pf_no": {"pf_no", "pf number", "pf no"},
+    "pf_uan": {"pf_uan", "uan", "pf uan"},
+    "location": {"location"},
+    "effective_work_days": {"effective work days", "effective_work_days"},
+    "month": {"month", "pay_month", "payslip_month", "payslip for the month of"},
+    "total_working_days": {"total_working_days", "total working days"},
+    "present_days": {"present_days", "present days"},
+    "lop_days": {"lop_days", "lop days", "lwp", "loss of pay", "lop"},
+    "pay_days": {"pay_days", "pay days", "paid_days", "pay days(26)"},
+    "days_in_month": {"days_in_month", "days in month"},
+    "basic": {"basic"},
+    "da": {"da", "dearness allowance"},
+    "hra": {"hra", "house rent allowance"},
+    "transport_allowances": {"transport_allowances", "transport allowance", "ta"},
+    "food_allowances": {"food_allowances", "food allowance"},
+    "internet_allowances": {"internet_allowances", "internet allowance"},
+    "other_allowances": {"other_allowances", "other allowance"},
+    "salary_arrear_allowance": {
+        "salary_arrear_allowance",
+        "salary arrier / allowance",
+        "salary arrear allowance",
+    },
+    "gross_salary": {"gross_salary", "gross salary"},
+    "pf_employee": {"pf_employee", "pf employee", "provident fund"},
+    "pf_employer": {"pf_employer", "pf employer"},
+    "esi_employee": {"esi_employee", "esi employee"},
+    "esi_employer": {"esi_employer", "esi employer"},
+    "professional_tax": {"professional_tax", "professional tax"},
+    "salary_advance": {"salary_advance", "salary advance"},
+    "tds": {"tds"},
+    "other_deduction": {"other_deduction", "other deduction"},
+    "total_deductions": {"total_deductions", "total deductions"},
+    "net_payable": {"net_payable", "net payable", "net pay"},
+}
+
+EARNING_COLUMNS = (
+    "basic",
+    "da",
+    "hra",
+    "transport_allowances",
+    "food_allowances",
+    "internet_allowances",
+    "other_allowances",
+    "salary_arrear_allowance",
+)
+DEDUCTION_COLUMNS = (
+    "pf_employee",
+    "esi_employee",
+    "professional_tax",
+    "salary_advance",
+    "tds",
+    "other_deduction",
+)
+
+
+def _normalize_name(name: str) -> str:
+    cleaned = name.strip().lower().replace("/", " ").replace("#", " ")
+    cleaned = re.sub(r"[\(\)]", " ", cleaned)
+    cleaned = re.sub(r"[^a-z0-9]+", "_", cleaned)
+    return cleaned.strip("_")
+
+
+def _build_alias_map() -> dict[str, str]:
+    alias_map: dict[str, str] = {}
+    for canonical, aliases in COLUMN_ALIASES.items():
+        alias_map[_normalize_name(canonical)] = canonical
+        for alias in aliases:
+            alias_map[_normalize_name(alias)] = canonical
+    return alias_map
+
+
+ALIAS_MAP = _build_alias_map()
+
+
+def normalize_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    frame = frame.copy()
+    normalized = []
+    for col in frame.columns:
+        key = _normalize_name(str(col))
+        normalized.append(ALIAS_MAP.get(key, key))
+    frame.columns = normalized
+    return frame
+
+
+def validate_columns(frame: pd.DataFrame) -> list[str]:
+    missing = [col for col in REQUIRED_COLUMNS if col not in frame.columns]
+    return missing
+
+
+def parse_salary_file(file_bytes: bytes) -> pd.DataFrame:
+    data = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+    data = normalize_columns(data)
+    return data
+
+
+def safe_number(value: object) -> float:
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return 0.0
+        if isinstance(value, str) and value.strip() in {"", "-"}:
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def display_value(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    if isinstance(value, str) and value.strip() == "":
+        return "-"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, str) and "00:00:00" in value:
+        return value.split(" ")[0]
+    return str(value)
+
+
+def format_money(value: object) -> str:
+    return f"{safe_number(value):,.2f}"
+
+
+def format_month(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    if isinstance(value, str) and value.strip() == "":
+        return "-"
+    try:
+        parsed = pd.to_datetime(value)
+        return parsed.strftime("%b %Y").upper()
+    except Exception:
+        return display_value(value)
+
+
+_ONES = (
+    "Zero",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+)
+_TENS = (
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+)
+
+
+def _convert_hundreds(number: int) -> str:
+    words: list[str] = []
+    hundreds, remainder = divmod(number, 100)
+    if hundreds:
+        words.append(f"{_ONES[hundreds]} Hundred")
+    if remainder:
+        if remainder < 20:
+            words.append(_ONES[remainder])
+        else:
+            tens, ones = divmod(remainder, 10)
+            words.append(_TENS[tens] if ones == 0 else f"{_TENS[tens]} {_ONES[ones]}")
+    return " ".join(words)
+
+
+def number_to_words(value: object) -> str:
+    amount = int(round(safe_number(value)))
+    if amount == 0:
+        return "Zero"
+
+    parts: list[str] = []
+    crores, amount = divmod(amount, 10_000_000)
+    lakhs, amount = divmod(amount, 100_000)
+    thousands, amount = divmod(amount, 1_000)
+    hundreds = amount
+
+    if crores:
+        parts.append(f"{_convert_hundreds(crores)} Crore")
+    if lakhs:
+        parts.append(f"{_convert_hundreds(lakhs)} Lakh")
+    if thousands:
+        parts.append(f"{_convert_hundreds(thousands)} Thousand")
+    if hundreds:
+        parts.append(_convert_hundreds(hundreds))
+
+    return " ".join(parts)
+
+
+def pick_value(row: pd.Series, *keys: str) -> object:
+    for key in keys:
+        value = row.get(key)
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            continue
+        if isinstance(value, str) and value.strip() == "":
+            continue
+        return value
+    return None
+
+
+def build_payslip_pdf(row: pd.Series, company: CompanyInfo, logo_bytes: bytes | None) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+    styles = getSampleStyleSheet()
+    story: list = []
+
+    logo = None
+    if logo_bytes:
+        try:
+            max_width = 26 * mm
+            max_height = 18 * mm
+            with PilImage.open(BytesIO(logo_bytes)) as img:
+                img = img.convert("RGBA")
+                img.thumbnail((int(max_width), int(max_height)), PilImage.LANCZOS)
+                logo_buffer = BytesIO()
+                img.save(logo_buffer, format="PNG")
+                logo_buffer.seek(0)
+                logo_reader = ImageReader(logo_buffer)
+                logo = Image(logo_reader, width=img.width, height=img.height)
+                logo.hAlign = "RIGHT"
+        except Exception:
+            logo = None
+
+    month_label = format_month(row.get("month"))
+    company_lines = [
+        Paragraph(f"<b>{company.name}</b>", styles["Title"]),
+        Paragraph(company.address.replace("\n", "<br />"), styles["Normal"]),
+    ]
+    contact_parts = [part for part in [company.email, company.phone] if part]
+    if contact_parts:
+        company_lines.append(Paragraph(" | ".join(contact_parts), styles["Normal"]))
+
+    header_table = Table(
+        [
+            [company_lines, logo or ""],
+            [Paragraph(f"Payslip for the month of {month_label}", styles["Heading3"]), ""],
+        ],
+        colWidths=[140 * mm, 30 * mm],
+        rowHeights=[24 * mm, None],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("SPAN", (0, 1), (1, 1)),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (1, 0), (1, 0), 2),
+                ("RIGHTPADDING", (1, 0), (1, 0), 2),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("ALIGN", (0, 1), (1, 1), "CENTER"),
+            ]
+        )
+    )
+    story.append(header_table)
+    story.append(Spacer(1, 6))
+
+    effective_work_days = pick_value(
+        row, "effective_work_days", "present_days", "pay_days", "total_working_days"
+    )
+
+    def _value_cell(value: object) -> Paragraph:
+        return Paragraph(display_value(value), styles["Normal"])
+
+    info_rows = [
+        [
+            "Name",
+            _value_cell(row.get("employee_name")),
+            "Employee No",
+            _value_cell(row.get("employee_id")),
+        ],
+        [
+            "Joining Date",
+            _value_cell(row.get("joining_date")),
+            "Bank Name",
+            _value_cell(row.get("bank_name")),
+        ],
+        [
+            "Designation",
+            _value_cell(row.get("designation")),
+            "Bank Account No",
+            _value_cell(row.get("account_number")),
+        ],
+        [
+            "Department",
+            _value_cell(row.get("department")),
+            "PAN Number",
+            _value_cell(row.get("pan_number")),
+        ],
+        [
+            "Location",
+            _value_cell(row.get("location")),
+            "PF No",
+            _value_cell(row.get("pf_no")),
+        ],
+        [
+            "Effective Work Days",
+            _value_cell(effective_work_days),
+            "PF UAN",
+            _value_cell(row.get("pf_uan")),
+        ],
+        ["LOP", _value_cell(row.get("lop_days")), "", ""],
+    ]
+
+    info_table = Table(info_rows, colWidths=[35 * mm, 50 * mm, 35 * mm, 50 * mm])
+    info_table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(info_table)
+    story.append(Spacer(1, 8))
+
+    earnings_total = sum(safe_number(row.get(col)) for col in EARNING_COLUMNS)
+    deductions_total = sum(safe_number(row.get(col)) for col in DEDUCTION_COLUMNS)
+
+    gross_salary = safe_number(row.get("gross_salary")) or earnings_total
+    total_deductions = safe_number(row.get("total_deductions")) or deductions_total
+    net_total = safe_number(row.get("net_payable")) or (gross_salary - total_deductions)
+
+    earnings_rows: list[list[str]] = []
+    for col in EARNING_COLUMNS:
+        if col in row.index:
+            label = col.replace("_", " ").title()
+            master_value = row.get(f"{col}_master")
+            master_display = format_money(master_value) if safe_number(master_value) else "-"
+            earnings_rows.append([label, master_display, format_money(row.get(col))])
+
+    deductions_rows: list[list[str]] = []
+    for col in DEDUCTION_COLUMNS:
+        if col in row.index:
+            label = col.replace("_", " ").title()
+            deductions_rows.append([label, format_money(row.get(col))])
+
+    max_rows = max(len(earnings_rows), len(deductions_rows), 1)
+    while len(earnings_rows) < max_rows:
+        earnings_rows.append(["", "", ""])
+    while len(deductions_rows) < max_rows:
+        deductions_rows.append(["", ""])
+
+    combined_rows = [["Earnings", "Master", "Actual", "Deductions", "Actual"]]
+    for idx in range(max_rows):
+        earn_label, earn_master, earn_actual = earnings_rows[idx]
+        ded_label, ded_actual = deductions_rows[idx]
+        combined_rows.append([earn_label, earn_master, earn_actual, ded_label, ded_actual])
+
+    combined_rows.append(
+        [
+            "Total Earnings: INR.",
+            "",
+            format_money(gross_salary),
+            "Total Deductions: INR.",
+            format_money(total_deductions),
+        ]
+    )
+
+    combined_table = Table(
+        combined_rows,
+        colWidths=[55 * mm, 20 * mm, 20 * mm, 55 * mm, 20 * mm],
+    )
+    combined_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("ALIGN", (1, 1), (2, -1), "RIGHT"),
+                ("ALIGN", (4, 1), (4, -1), "RIGHT"),
+                ("SPAN", (0, -1), (1, -1)),
+                ("SPAN", (3, -1), (3, -1)),
+            ]
+        )
+    )
+    story.append(combined_table)
+
+    story.append(Spacer(1, 8))
+    net_words = number_to_words(net_total)
+    net_table = Table(
+        [
+            [f"Net Pay for the month ( Total Earnings - Total Deductions ):  {format_money(net_total)}"],
+            [f"(Rupees {net_words} Only)"],
+        ],
+        colWidths=[170 * mm],
+    )
+    net_table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ]
+        )
+    )
+    story.append(net_table)
+    story.append(Spacer(1, 4))
+    story.append(Paragraph("This is a system generated payslip and does not require signature.", styles["Normal"]))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_zip(file_pairs: Iterable[tuple[str, bytes]]) -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as zip_file:
+        for filename, content in file_pairs:
+            zip_file.writestr(filename, content)
+    return buffer.getvalue()
+
+
+def build_offer_letter_pdf(data: dict) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+    styles = getSampleStyleSheet()
+    letter_style = ParagraphStyle(
+        "letter_style",
+        parent=styles["Normal"],
+        fontSize=12,
+        leading=16,
+        alignment=TA_JUSTIFY,
+    )
+    story: list = []
+
+    offer_title = str(
+        data.get("offer_type_label") or data.get("offer_type") or "Offer Letter"
+    ).upper()
+    name = str(data.get("name", "")).strip()
+    roll_number = str(data.get("roll_number", "")).strip()
+    course = str(data.get("course", "")).strip()
+    college_name = str(data.get("college_name", "")).strip()
+    college_address = str(data.get("college_address", "")).strip()
+    role = str(data.get("internship_role", "")).strip()
+    start_date = data.get("start_date")
+    if start_date:
+        start_date_label = start_date.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        start_date_label = "-"
+
+    story.append(Paragraph(offer_title, styles["Title"]))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(name, letter_style))
+    story.append(Paragraph(f"Roll No- {roll_number}", letter_style))
+    story.append(Paragraph(course, letter_style))
+    story.append(Paragraph(college_name, letter_style))
+    story.append(Paragraph(college_address.replace("\n", "<br />"), letter_style))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Dear {name},", letter_style))
+    story.append(
+        Paragraph(
+            "We are pleased to offer you an internship at our company Aveon Infotech Private Limited "
+            f"as an {role}. Your internship starts on {start_date_label}.",
+            letter_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            "The terms and conditions of your Internship with the Company are set forth below:",
+            letter_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            "Subject to your acceptance of the terms and conditions contained herein, your project "
+            "and responsibilities during the Term will be determined by the supervisor assigned to "
+            "you for the duration of the Internship.",
+            letter_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            "The Internship cannot be construed as an employment offer with Aveon Infotech Private Limited.",
+            letter_style,
+        )
+    )
+    story.append(Spacer(1, 24))
+    story.append(Paragraph("Sincerely,", letter_style))
+    story.append(Paragraph("Ranjith Kumar", letter_style))
+    story.append(Paragraph("General Manager", letter_style))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_appointment_order_pdf(data: dict) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+    styles = getSampleStyleSheet()
+    letter_style = ParagraphStyle(
+        "letter_style",
+        parent=styles["Normal"],
+        fontSize=12,
+        leading=16,
+        alignment=TA_JUSTIFY,
+    )
+    story: list = []
+
+    # Header information
+    today = date.today()
+    date_str = today.strftime("%b. %d, %Y").replace(" 0", " ")
+    serial_no = str(data.get("serial_no", "")).strip()
+    employee_name = str(data.get("employee_name", "")).strip()
+    addr1 = str(data.get("present_address1", "")).strip()
+    addr2 = str(data.get("present_address2", "")).strip()
+    addr3 = str(data.get("present_address3", "")).strip()
+    city = str(data.get("present_address_city", "")).strip()
+    state = str(data.get("present_address_state", "")).strip()
+    pin_code = str(data.get("present_address_pin", "")).strip()
+    designation = str(data.get("designation", "")).strip()
+    join_date = data.get("join_date")
+    if join_date:
+        join_date_str = join_date.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        join_date_str = "-"
+    probation_period = str(data.get("probation_period", "")).strip()
+    ctc = str(data.get("ctc", "")).strip()
+    company_name = str(data.get("company_name", "")).strip()
+    signatory = str(data.get("signatory", "")).strip()
+    signatory_designation = str(data.get("signatory_designation", "")).strip()
+
+    # Date and Ref No
+    story.append(Paragraph(f"Date: {date_str}", styles["Normal"]))
+    story.append(Paragraph(f"Ref No: {serial_no}", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    # Address
+    story.append(Paragraph(employee_name, styles["Normal"]))
+    if addr1:
+        story.append(Paragraph(addr1, styles["Normal"]))
+    if addr2:
+        story.append(Paragraph(addr2, styles["Normal"]))
+    if addr3:
+        story.append(Paragraph(addr3, styles["Normal"]))
+    if city or state or pin_code:
+        city_state_pin = f"{city}, {state} {pin_code}".strip(", ")
+        story.append(Paragraph(city_state_pin, styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    # Title
+    story.append(Paragraph("Appointment Order", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    # Body
+    story.append(Paragraph(f"Dear {employee_name},", letter_style))
+    story.append(Spacer(1, 6))
+    
+    story.append(Paragraph(
+        f"We are pleased to appoint you as {designation} with effect from {join_date_str}.",
+        letter_style,
+    ))
+    story.append(Paragraph(
+        "Your employment in our organization shall be governed by the following terms and conditions. "
+        "The terms and conditions may be amended from time to time at the discretion of the Management.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 6))
+
+    # Terms and conditions
+    terms = [
+        f"You shall be initially on probation for a period of {probation_period} days. After the probation period is completed, you will be absorbed as the confirmed employee based on your performance and review. However, the organization reserves the right to extend the probation if required.",
+        "During your probation, your services can be terminated without stipulating any reason with one-month notice or gross salary in lieu of notice on either side.",
+        "You will continue in probation unless you receive a confirmation in writing from the respective department.",
+        "You shall perform all the duties as the position you hold with diligence and such other tasks that may be assigned to you depending on the nature of work.",
+        "You are liable for transfer or delegation to any of our office locations at the discretion of the Management.",
+        f"You shall be paid a total remuneration (CTC) of Indian Rupees {ctc} /-",
+        "Apart from the above, you are also eligible for Paid Offs, Performance Incentives, Food Coupons, Medical Insurance, etc., as per the company set practices.",
+        "You shall attain superannuation at the age of 58 years.",
+        "Termination of your services by the management without notice would arise in the event of:<br/>a. You are being found medically unfit during a pre-medical test<br/>b. Any contravention of the rules mentioned in standing orders<br/>c. Any other proven misconduct as per standing orders",
+        "You shall not disclose any confidential and proprietary information to anyone who is not authorized to obtain the same. You would be required to sign a Non-Disclosure Agreement (NDA) in this regard at the time of your joining the organization.",
+        "The organization reserves its right to amend the grade, designation, and salary structure offered to you from time to time.",
+        "You shall comply with the rules and regulations of the organization as stipulated in the standing orders, employee handbook, or in any other manners that are currently in force or amended in future from time to time.",
+        "The appointment is offered on the understanding that the information given by you is correct/true and complete. If found incorrect, this appointment may be withdrawn before you join service with us, or your services may be terminated at any time after you have taken up employment with us.",
+        "If you are absent for a period of 5 consecutive working days without the sanction of leave or overstay, you shall lose your lien on your employment. You shall be assumed to have abandoned employment voluntarily.",
+        "You shall take excellent care of and be responsible for the work equipment, official documents, tools, and other items/materials entrusted to you.",
+        "This offer is provided in duplicate. Please return the duplicate copy duly signed by you as a token that indicates you have read, understood, and accepted the terms & conditions of this appointment offer.",
+    ]
+    
+    for i, term in enumerate(terms, 1):
+        story.append(Paragraph(f"{i}. {term}", letter_style))
+        story.append(Spacer(1, 4))
+
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        f"{company_name} welcomes you and offers delightful employment to work and hope that the association will be mutually beneficial and meaningful.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("With best wishes,", letter_style))
+    story.append(Paragraph(f"For {company_name},", letter_style))
+    story.append(Spacer(1, 24))
+    story.append(Paragraph(signatory, letter_style))
+    story.append(Paragraph(signatory_designation, letter_style))
+    story.append(Spacer(1, 24))
+
+    story.append(Paragraph(
+        "I hereby accept the terms and conditions of the employment mentioned in this order.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("Name of Employee:", styles["Normal"]))
+    story.append(Paragraph("Signature:", styles["Normal"]))
+    story.append(Paragraph("Date:", styles["Normal"]))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_employment_offer_pdf(data: dict) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+    styles = getSampleStyleSheet()
+    letter_style = ParagraphStyle(
+        "letter_style",
+        parent=styles["Normal"],
+        fontSize=12,
+        leading=16,
+        alignment=TA_JUSTIFY,
+    )
+    story: list = []
+
+    # Extract data
+    candidate_name = str(data.get("candidate_name", "")).strip()
+    position = str(data.get("position", "")).strip()
+    annual_ctc = data.get("annual_ctc", 0)
+    ctc_in_words = str(data.get("ctc_in_words", "")).strip()
+    joining_date = data.get("joining_date")
+    if joining_date:
+        joining_date_str = joining_date.strftime("%dth of %b %Y").replace(" 0", " ")
+    else:
+        joining_date_str = "-"
+    employer_name = str(data.get("employer_name", "")).strip()
+    employer_designation = str(data.get("employer_designation", "")).strip()
+
+    # Title
+    story.append(Paragraph("OFFER LETTER", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    # Body
+    story.append(Paragraph(f"Dear {candidate_name},", letter_style))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"We are pleased to extend this offer of employment for the position of {position} at "
+        "iResponsive Offshore Development Center Private Limited. Our company is committed to providing "
+        "the best possible work environment for our employees, and we believe that you have the skills, "
+        "experience, and dedication needed to be a valuable member of our team.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph("You are offered employment on the following terms:", letter_style))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"The total base pay (i.e., annual fixed compensation) all-inclusive at your position will be "
+        f"Rs. {annual_ctc:,.2f}/- ({ctc_in_words}). The Annual fixed compensation and Annual variable pay "
+        "will be subject to deduction of tax at source, in accordance with Income Tax Act, 1961 and all "
+        "other central and state legislation applicable to your base location.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        "You shall not, during the period of your employment with the Company or at any time thereafter, "
+        "use, divulge or disclose, either directly or indirectly to any person, firm or body corporate any "
+        "knowledge, information or documents which you may acquire, process or have access to in the course "
+        "of your employment, concerning the business and affairs of the Company.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        "During your employment you will observe all the rules and regulations of the Company.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        "The Company also reserves the right to rescind, revoke, amend or withdraw this Offer Letter or "
+        "any of the terms outlined herein without assigning any reason.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"We trust that you will find the above in order. Please feel free to contact the undersigned for "
+        f"any clarifications/questions that you may have. To confirm your acceptance of this Offer Letter, "
+        f"please sign at the bottom of this page, scan and email us the duplicate copy duly signed, and your "
+        f"joining date will be the {joining_date_str}.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        "We are very excited to welcome you to our team and look forward to your contribution to the growth of our company.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Regards,", letter_style))
+    story.append(Spacer(1, 24))
+    story.append(Paragraph(employer_name, letter_style))
+    story.append(Paragraph(employer_designation, letter_style))
+    story.append(Spacer(1, 16))
+
+    # Annexure I
+    story.append(Paragraph("<b>Annexure I</b>", styles["Heading2"]))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(f"Employee Name: {candidate_name}", letter_style))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("<b>ANNUAL COMPENSATION STRUCTURE: (All components are in Rs.)</b>", letter_style))
+    story.append(Spacer(1, 8))
+
+    # Compensation table
+    basic_monthly = float(data.get("basic_monthly", 0))
+    basic_annual = float(data.get("basic_annual", 0))
+    da_monthly = float(data.get("da_monthly", 0))
+    da_annual = float(data.get("da_annual", 0))
+    hra_monthly = float(data.get("hra_monthly", 0))
+    hra_annual = float(data.get("hra_annual", 0))
+    ta_monthly = float(data.get("ta_monthly", 0))
+    ta_annual = float(data.get("ta_annual", 0))
+    food_monthly = float(data.get("food_allowance_monthly", 0))
+    food_annual = float(data.get("food_allowance_annual", 0))
+    pf_emp_monthly = float(data.get("pf_employee_monthly", 0))
+    pf_emp_annual = float(data.get("pf_employee_annual", 0))
+    pf_empr_monthly = float(data.get("pf_employer_monthly", 0))
+    pf_empr_annual = float(data.get("pf_employer_annual", 0))
+
+    total_monthly = basic_monthly + da_monthly + hra_monthly + ta_monthly + food_monthly
+    total_annual = basic_annual + da_annual + hra_annual + ta_annual + food_annual
+    net_monthly = total_monthly - pf_emp_monthly
+    net_annual = total_annual - pf_emp_annual
+
+    comp_data = [
+        ["Elements", "Monthly (Rs.)", "Annual (Rs.)"],
+        ["Basic", f"{basic_monthly:,.2f}", f"{basic_annual:,.2f}"],
+        ["DA", f"{da_monthly:,.2f}", f"{da_annual:,.2f}"],
+        ["HRA", f"{hra_monthly:,.2f}", f"{hra_annual:,.2f}"],
+        ["TA", f"{ta_monthly:,.2f}", f"{ta_annual:,.2f}"],
+        ["Food Allowance", f"{food_monthly:,.2f}", f"{food_annual:,.2f}"],
+        ["Total", f"{total_monthly:,.2f}", f"{total_annual:,.2f}"],
+        ["PF (Employee Contribution)", f"{pf_emp_monthly:,.2f}", f"{pf_emp_annual:,.2f}"],
+        ["Net Salary", f"{net_monthly:,.2f}", f"{net_annual:,.2f}"],
+    ]
+
+    comp_table = Table(comp_data, colWidths=[70 * mm, 50 * mm, 50 * mm])
+    comp_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ]
+        )
+    )
+    story.append(comp_table)
+    story.append(Spacer(1, 12))
+
+    # Benefits
+    story.append(Paragraph("<b>Benefits</b>", letter_style))
+    benefits_data = [
+        ["PF (Employer Contribution)", f"{pf_empr_monthly:,.2f}", f"{pf_empr_annual:,.2f}"],
+    ]
+    benefits_table = Table(benefits_data, colWidths=[70 * mm, 50 * mm, 50 * mm])
+    benefits_table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ]
+        )
+    )
+    story.append(benefits_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph(
+        "On receipt of this letter, please send us your confirmation as a token of your acceptance within 2 days. "
+        "We look forward to working with you and we are confident you will be able to make a significant contribution "
+        "to the growth and success of the organization.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Sincerely,", letter_style))
+    story.append(Spacer(1, 24))
+    story.append(Paragraph(employer_name, letter_style))
+    story.append(Paragraph(employer_designation, letter_style))
+    story.append(Spacer(1, 16))
+
+    # Acknowledgement
+    story.append(Paragraph("<b>ACKNOWLEDGEMENT</b>", styles["Heading2"]))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        "I have read and understood the terms and conditions stated above and hereby signify my acceptance of the same.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 16))
+    story.append(Paragraph("Signature…………………………………………… Date…………………", letter_style))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_experience_certificate_pdf(data: dict) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+    styles = getSampleStyleSheet()
+    letter_style = ParagraphStyle(
+        "letter_style",
+        parent=styles["Normal"],
+        fontSize=12,
+        leading=16,
+        alignment=TA_JUSTIFY,
+    )
+    center_style = ParagraphStyle(
+        "center_style",
+        parent=styles["Normal"],
+        fontSize=12,
+        alignment=1,  # Center alignment
+    )
+    story: list = []
+
+    # Extract data
+    title = str(data.get("title", "")).strip()
+    employee_name = str(data.get("employee_name_exp", "")).strip()
+    employee_no = str(data.get("employee_no", "")).strip()
+    company_name = str(data.get("company_name_exp", "")).strip()
+    join_date = data.get("join_date_exp")
+    leaving_date = data.get("leaving_date")
+    gender = str(data.get("gender", "male")).strip()
+    designation = str(data.get("designation_exp", "")).strip()
+    signatory = str(data.get("signatory_exp", "")).strip()
+    signatory_designation = str(data.get("signatory_designation_exp", "")).strip()
+
+    # Format dates
+    today = date.today()
+    date_str = today.strftime("%b. %d, %Y").replace(" 0", " ")
+    
+    if join_date:
+        join_date_str = join_date.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        join_date_str = "-"
+    
+    if leaving_date:
+        leaving_date_str = leaving_date.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        leaving_date_str = "-"
+
+    # Gender-based pronouns
+    if gender.lower() == "male":
+        his_her = "his"
+        him_her = "him"
+    else:
+        his_her = "her"
+        him_her = "her"
+
+    # Date
+    story.append(Paragraph(f"Date: {date_str}", styles["Normal"]))
+    story.append(Spacer(1, 16))
+
+    # Title
+    story.append(Paragraph("Experience Letter", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    # To whom it may concern
+    story.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", center_style))
+    story.append(Spacer(1, 16))
+
+    # Body
+    story.append(Paragraph(
+        f"This is to certify that {title} {employee_name} bearing employee ID {employee_no} has worked with "
+        f"{company_name} and left our organization on {leaving_date_str}.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"<b>Duration:</b> {join_date_str} to {leaving_date_str}",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"During {his_her} work tenure, {employee_name} has remained dedicated and loyal to {his_her} work and "
+        f"responsibilities with our company. The designation of {employee_name} at the time of leaving the "
+        f"organization was {designation}.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        f"The employee's performance was outstanding, and we appreciate the services rendered to our organization. "
+        f"We wish {him_her} all the best for {his_her} future endeavors.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(
+        "Please feel free to be in touch with us for any additional information.",
+        letter_style,
+    ))
+    story.append(Spacer(1, 24))
+
+    # Signature
+    story.append(Paragraph("Authorized Signatory,", letter_style))
+    story.append(Spacer(1, 24))
+    story.append(Paragraph(signatory, letter_style))
+    story.append(Paragraph(signatory_designation, letter_style))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_travel_expense_pdf(data: dict) -> bytes:
+    import json
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+    styles = getSampleStyleSheet()
+    story: list = []
+
+    # Extract data
+    company_name = str(data.get("company_name_travel", "")).strip()
+    company_address = str(data.get("company_address_travel", "")).strip()
+    company_city_state = str(data.get("company_city_state", "")).strip()
+    company_country = str(data.get("company_country", "India")).strip()
+    
+    report_title = str(data.get("report_title", "")).strip()
+    business_purpose = str(data.get("business_purpose", "")).strip()
+    submitted_by = str(data.get("submitted_by", "")).strip()
+    submitted_on = data.get("submitted_on")
+    report_to = str(data.get("report_to", "")).strip()
+    period_start = data.get("reporting_period_start")
+    period_end = data.get("reporting_period_end")
+    
+    # Parse expense data
+    expense_data_str = data.get("expense_data", "[]")
+    try:
+        expenses = json.loads(expense_data_str) if expense_data_str else []
+    except:
+        expenses = []
+
+    # Format dates
+    if submitted_on:
+        submitted_on_str = submitted_on.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        submitted_on_str = "-"
+    
+    if period_start:
+        period_start_str = period_start.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        period_start_str = "-"
+    
+    if period_end:
+        period_end_str = period_end.strftime("%b. %d, %Y").replace(" 0", " ")
+    else:
+        period_end_str = "-"
+
+    # Header with company info and title
+    header_data = [
+        [
+            Paragraph(f"<font color='#9ca3af' size=8>{company_name}<br/>{company_address}<br/>{company_city_state}<br/>{company_country}</font>", styles["Normal"]),
+            Paragraph("<b>Expense Report</b><br/><font size=10 color='#6b7280'>ER-10001</font>", styles["Title"])
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[95 * mm, 85 * mm])
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(header_table)
+    story.append(Spacer(1, 12))
+
+    # Report details section
+    story.append(Paragraph(f"<b>Report Title:</b> {report_title}", styles["Normal"]))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"<b>Business Purpose:</b> {business_purpose}", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    # Submitted info table
+    info_data = [
+        ["Submitted By:", submitted_by, "Submitted On:", submitted_on_str],
+        ["Report To:", report_to, "Reporting Period:", f"{period_start_str} to {period_end_str}"],
+    ]
+    info_table = Table(info_data, colWidths=[40 * mm, 50 * mm, 40 * mm, 50 * mm])
+    info_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f9fafb")),
+                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f9fafb")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
+    story.append(info_table)
+    story.append(Spacer(1, 16))
+
+    # Get report currency
+    report_currency = str(data.get("report_currency", "INR")).strip()
+    
+    # Expense Details Table
+    expense_table_data = [
+        ["Date", "Expense Description", "Merchant", f"Amount ({report_currency})"]
+    ]
+    
+    total_amount = 0
+    merchant_totals = {}
+    
+    for idx, exp in enumerate(expenses):
+        exp_date = exp.get("date", "-")
+        description = exp.get("description", "-")
+        merchant = exp.get("merchant", "-")
+        amount = float(exp.get("amount", 0))
+        
+        # Format date
+        if exp_date and exp_date != "-":
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(exp_date, "%Y-%m-%d")
+                exp_date = date_obj.strftime("%b. %d, %Y").replace(" 0", " ")
+            except:
+                pass
+        
+        expense_table_data.append([
+            exp_date,
+            description,
+            merchant,
+            f"{amount:,.2f}"
+        ])
+        
+        total_amount += amount
+        merchant_totals[merchant] = merchant_totals.get(merchant, 0) + amount
+
+    expense_table_data.append([
+        "", "", "TOTAL", f"{total_amount:,.2f}"
+    ])
+
+    expense_table = Table(
+        expense_table_data,
+        colWidths=[32 * mm, 70 * mm, 48 * mm, 30 * mm]
+    )
+    expense_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6b7280")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f3f4f6")),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("LINEABOVE", (0, -1), (-1, -1), 1, colors.grey),
+            ]
+        )
+    )
+    story.append(expense_table)
+    story.append(Spacer(1, 16))
+
+    # Merchant-wise Spending Analysis
+    if merchant_totals:
+        story.append(Paragraph("<b>MERCHANT-WISE SPENDING ANALYSIS</b>", styles["Heading2"]))
+        story.append(Spacer(1, 6))
+
+        merchant_data = [[f"Merchant", f"Amount ({report_currency})", "Percentage"]]
+        for merchant, amount in sorted(merchant_totals.items(), key=lambda x: x[1], reverse=True):
+            percentage = (amount / total_amount * 100) if total_amount > 0 else 0
+            merchant_data.append([
+                merchant,
+                f"{amount:,.2f}",
+                f"{percentage:.1f}%"
+            ])
+
+        merchant_table = Table(merchant_data, colWidths=[60 * mm, 40 * mm, 40 * mm])
+        merchant_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#10b981")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ]
+            )
+        )
+        story.append(merchant_table)
+        story.append(Spacer(1, 12))
+
+    # Policy Compliance Check
+    policy_violations = []
+    for idx, exp in enumerate(expenses):
+        amount = float(exp.get("amount", 0))
+        if amount > 10000:
+            policy_violations.append(f"Expense #{idx+1}: Amount exceeds policy limit")
+    
+    story.append(Paragraph("<b>POLICY VIOLATIONS & ALERTS</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+    
+    if policy_violations:
+        for violation in policy_violations:
+            story.append(Paragraph(f"• <font color='red'>{violation}</font>", styles["Normal"]))
+    else:
+        story.append(Paragraph("• <font color='green'>No policy violations detected</font>", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    # Reimbursement Status Report
+    story.append(Paragraph("<b>REIMBURSEMENT STATUS REPORT</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+
+    reimbursement_data = [
+        ["Description", f"Amount ({report_currency})"],
+        ["Total Expenses", f"{total_amount:,.2f}"],
+        ["Policy Deductions", "0.00"],
+        ["Net Reimbursable", f"{total_amount:,.2f}"],
+        ["Status", "Pending Approval"],
+    ]
+
+    reimb_table = Table(reimbursement_data, colWidths=[70 * mm, 40 * mm])
+    reimb_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f59e0b")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("BACKGROUND", (0, -2), (-1, -2), colors.HexColor("#fef3c7")),
+                ("FONTNAME", (0, -2), (-1, -2), "Helvetica-Bold"),
+            ]
+        )
+    )
+    story.append(reimb_table)
+    story.append(Spacer(1, 12))
+
+    # Key Insights & Cost Optimization Suggestions
+    story.append(Paragraph("<b>KEY INSIGHTS & COST OPTIMIZATION SUGGESTIONS</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+
+    insights = []
+    
+    # Generate insights based on data
+    if total_amount > 20000:
+        insights.append("• High total expenses detected. Consider budget review for future trips.")
+    
+    if len(merchant_totals) > 0:
+        max_merchant = max(merchant_totals.items(), key=lambda x: x[1])
+        insights.append(f"• Highest spending merchant: {max_merchant[0]} ({report_currency} {max_merchant[1]:,.2f})")
+    
+    insights.append("• Consider advance booking to reduce accommodation and travel costs.")
+    insights.append("• Use corporate travel partners for better rates and policy compliance.")
+    insights.append("• Digital receipts improve processing time by 40%.")
+    
+    if policy_violations:
+        insights.append(f"• {len(policy_violations)} policy violation(s) require manager review.")
+
+    for insight in insights:
+        story.append(Paragraph(insight, styles["Normal"]))
+    story.append(Spacer(1, 16))
+
+    # Approval Section
+    story.append(Spacer(1, 12))
+    approval_data = [
+        ["Employee Signature:", "", "Date:", ""],
+        ["", "", "", ""],
+        ["Approved By:", report_to, "Date:", ""],
+        ["Signature:", "", "", ""],
+    ]
+
+    approval_table = Table(approval_data, colWidths=[40 * mm, 50 * mm, 30 * mm, 30 * mm])
+    approval_table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    story.append(approval_table)
+
+    doc.build(story)
+    return buffer.getvalue()
+

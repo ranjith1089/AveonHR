@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% load static %}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Payslip Generator</title>
+    <link rel="stylesheet" href="{% static 'payslip/styles.css' %}" />
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Home
+      </a>
+      <header class="header">
+        <div>
+          <p class="eyebrow">Payslip</p>
+          <h1>Generator</h1>
+          <p class="subtext">
+            Upload an Excel salary statement and export employee payslips to PDF.
+          </p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>Upload Details</h2>
+        <p class="help">
+          Required Excel columns: employee_name, employee_id, month. The uploader
+          auto-maps common header variations (e.g. Employee Name, Employee ID,
+          Pay Days(26), LOP Days, Basic, DA, HRA, Gross Salary, PF Employee, ESI
+          Employee, Salary Advance, TDS, Total Deductions, Net Payable).
+        </p>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="post" enctype="multipart/form-data" id="payslip-form">
+          {% csrf_token %}
+          <div class="form-grid">
+            {{ form.as_p }}
+          </div>
+          <div class="form-footer">
+            <div class="file-meta" id="file-meta">No file selected</div>
+            <button type="submit" class="primary">Generate Payslips</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Tips</h2>
+        <ul class="tips">
+          <li>Save Excel as .xlsx for best results.</li>
+          <li>Logo should be PNG or JPG under 2 MB.</li>
+          <li>All amounts should be numeric values.</li>
+        </ul>
+      </section>
+      <footer class="footer">
+        <a href="https://www.aveoninfotech.com" target="_blank" rel="noopener noreferrer">
+          Developed and Maintained by Aveon Infotech
+        </a>
+      </footer>
+    </div>
+    <script src="{% static 'payslip/app.js' %}"></script>
+  </body>
+</html>
+

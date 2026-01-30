@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% load static %}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Expense Generator</title>
+    <link rel="stylesheet" href="{% static 'payslip/styles.css' %}" />
+    <style>
+      .expense-report-container {
+        max-width: 1200px;
+        margin: 20px auto;
+        background: white;
+        padding: 40px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+      .report-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #e5e7eb;
+      }
+      .company-info {
+        color: #9ca3af;
+        line-height: 1.8;
+      }
+      .report-number {
+        text-align: right;
+      }
+      .report-number h1 {
+        font-size: 32px;
+        margin: 0 0 10px 0;
+        color: #1f2937;
+      }
+      .report-number .er-number {
+        color: #6b7280;
+        font-size: 18px;
+      }
+      .form-section {
+        margin: 30px 0;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 20px;
+      }
+      .form-field {
+        margin-bottom: 15px;
+      }
+      .form-field label {
+        display: block;
+        color: #6b7280;
+        font-size: 13px;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+      .form-field input,
+      .form-field textarea,
+      .form-field select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      .form-field textarea {
+        resize: vertical;
+      }
+      .expense-table {
+        width: 100%;
+        margin: 20px 0;
+        border-collapse: collapse;
+      }
+      .expense-table thead {
+        background: #6b7280;
+        color: white;
+      }
+      .expense-table th {
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .expense-table td {
+        padding: 12px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .expense-table td input,
+      .expense-table td select,
+      .expense-table td textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .expense-table td textarea {
+        resize: vertical;
+        min-height: 40px;
+      }
+      .expense-row {
+        background: #ffffff;
+      }
+      .expense-row:hover {
+        background: #f9fafb;
+      }
+      .btn-remove-expense {
+        background: #ef4444;
+        color: white;
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .btn-remove-expense:hover {
+        background: #dc2626;
+      }
+      .add-expense-link {
+        color: #2563eb;
+        text-decoration: none;
+        font-size: 14px;
+        display: inline-block;
+        margin: 10px 0;
+        cursor: pointer;
+      }
+      .add-expense-link:hover {
+        text-decoration: underline;
+      }
+      .total-row {
+        background: #f3f4f6;
+        font-weight: bold;
+      }
+      .total-row td {
+        padding: 15px 12px;
+        font-size: 15px;
+      }
+      .total-amount {
+        text-align: right;
+        font-size: 18px;
+      }
+      .currency-selector {
+        display: inline-block;
+        margin-right: 10px;
+        padding: 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+      }
+      .submit-section {
+        margin-top: 30px;
+        text-align: right;
+      }
+      .btn-generate {
+        background: #2563eb;
+        color: white;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 4px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-generate:hover {
+        background: #1d4ed8;
+      }
+      .full-width {
+        grid-column: 1 / -1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Home
+      </a>
+      <div class="expense-report-container">
+        <form method="post" id="travelExpenseForm">
+          {% csrf_token %}
+          
+          <!-- Header Section -->
+          <div class="report-header">
+            <div class="company-info">
+              <div style="font-size: 18px; color: #4b5563; font-weight: 600; margin-bottom: 10px;">
+                <input type="text" name="company_name_travel" placeholder="Your Company Name" 
+                       style="border: none; font-size: 18px; font-weight: 600; color: #4b5563; width: 100%;" required>
+              </div>
+              <div>
+                <input type="text" name="company_address_travel" placeholder="Company's Address" 
+                       style="border: none; background: transparent; color: #9ca3af; width: 100%;" required>
+              </div>
+              <div>
+                <input type="text" name="company_city_state" placeholder="City, State Zip" 
+                       style="border: none; background: transparent; color: #9ca3af; width: 100%;" required>
+              </div>
+              <div>
+                <input type="text" name="company_country" value="India" 
+                       style="border: none; background: transparent; color: #9ca3af; width: 100%;" required>
+              </div>
+            </div>
+            <div class="report-number">
+              <h1>Expense Report</h1>
+              <div class="er-number">ER-<span id="reportNumber">{{ report_number|default:"10001" }}</span></div>
+            </div>
+          </div>
+
+          <!-- Report Details Section -->
+          <div class="form-section">
+            <div class="form-row">
+              <div class="form-field full-width">
+                <label>Report Title</label>
+                <input type="text" name="report_title" placeholder="Enter report title" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field full-width">
+                <label>Business Purpose</label>
+                <textarea name="business_purpose" rows="3" placeholder="Describe the business purpose" required></textarea>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Submitted By</label>
+                <input type="text" name="submitted_by" required>
+              </div>
+              <div class="form-field">
+                <label>Submitted On</label>
+                <input type="date" name="submitted_on" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Report To</label>
+                <input type="text" name="report_to" required>
+              </div>
+              <div class="form-field">
+                <label>Reporting Period</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <input type="date" name="reporting_period_start" style="flex: 1;" required>
+                  <span>to</span>
+                  <input type="date" name="reporting_period_end" style="flex: 1;" required>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Expense Table -->
+          <table class="expense-table">
+            <thead>
+              <tr>
+                <th style="width: 120px;">Date</th>
+                <th style="width: 300px;">Expense Description</th>
+                <th style="width: 180px;">Merchant</th>
+                <th style="width: 140px;">Amount</th>
+                <th style="width: 80px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="expense-tbody">
+              <!-- Expense rows will be added here -->
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5">
+                  <a href="#" class="add-expense-link" onclick="addExpenseRow(); return false;">Add New Expense</a>
+                </td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3" style="text-align: right;">TOTAL</td>
+                <td colspan="2" class="total-amount">
+                  <select id="report-currency" name="report_currency" class="currency-selector">
+                    <option value="USD">US Dollar ($)</option>
+                    <option value="INR" selected>Indian Rupee (Rs.)</option>
+                    <option value="EUR">Euro (€)</option>
+                    <option value="GBP">British Pound (£)</option>
+                    <option value="JPY">Japanese Yen (¥)</option>
+                    <option value="AUD">Australian Dollar (A$)</option>
+                    <option value="CAD">Canadian Dollar (C$)</option>
+                    <option value="CHF">Swiss Franc (CHF)</option>
+                    <option value="CNY">Chinese Yuan (¥)</option>
+                    <option value="SEK">Swedish Krona (kr)</option>
+                    <option value="NZD">New Zealand Dollar (NZ$)</option>
+                    <option value="MXN">Mexican Peso</option>
+                    <option value="SGD">Singapore Dollar</option>
+                    <option value="HKD">Hong Kong Dollar (HK$)</option>
+                    <option value="NOK">Norwegian Krone</option>
+                    <option value="KRW">South Korean Won (₩)</option>
+                    <option value="TRY">Turkish Lira</option>
+                    <option value="RUB">Russian Ruble</option>
+                    <option value="BRL">Brazilian Real</option>
+                    <option value="ZAR">South African Rand</option>
+                  </select>
+                  <span id="total-amount">0.00</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <textarea id="expense_data" name="expense_data" style="display:none;">[]</textarea>
+
+          <!-- Submit Section -->
+          <div class="submit-section">
+            <button type="submit" class="btn-generate">Generate Report</button>
+          </div>
+        </form>
+      </div>
+
+      <script>
+        let expenseCounter = 0;
+
+        function addExpenseRow() {
+          const tbody = document.getElementById('expense-tbody');
+          const row = document.createElement('tr');
+          row.className = 'expense-row';
+          row.id = `expense-row-${expenseCounter}`;
+          row.innerHTML = `
+            <td><input type="date" class="expense-date" data-id="${expenseCounter}" required></td>
+            <td><textarea class="expense-description" data-id="${expenseCounter}" placeholder="Description" required></textarea></td>
+            <td><input type="text" class="expense-merchant" data-id="${expenseCounter}" placeholder="Merchant Name" required></td>
+            <td><input type="number" class="expense-amount" data-id="${expenseCounter}" placeholder="0.00" step="0.01" onchange="updateTotal()" required></td>
+            <td><button type="button" class="btn-remove-expense" onclick="removeExpenseRow(${expenseCounter})">Remove</button></td>
+          `;
+          tbody.appendChild(row);
+          expenseCounter++;
+        }
+
+        function removeExpenseRow(id) {
+          const row = document.getElementById(`expense-row-${id}`);
+          if (row) {
+            row.remove();
+            updateTotal();
+          }
+        }
+
+        function updateTotal() {
+          let total = 0;
+          document.querySelectorAll('.expense-amount').forEach(input => {
+            const amount = parseFloat(input.value) || 0;
+            total += amount;
+          });
+          document.getElementById('total-amount').textContent = total.toFixed(2);
+        }
+
+        function collectExpenses() {
+          const expenses = [];
+          const currency = document.getElementById('report-currency').value;
+          document.querySelectorAll('.expense-row').forEach(row => {
+            const id = row.querySelector('.expense-date').dataset.id;
+            const expense = {
+              date: row.querySelector('.expense-date').value,
+              description: row.querySelector('.expense-description').value,
+              merchant: row.querySelector('.expense-merchant').value,
+              currency: currency,
+              amount: parseFloat(row.querySelector('.expense-amount').value) || 0
+            };
+            expenses.push(expense);
+          });
+          return expenses;
+        }
+
+        document.getElementById('travelExpenseForm').addEventListener('submit', function(e) {
+          const expenses = collectExpenses();
+          document.getElementById('expense_data').value = JSON.stringify(expenses);
+        });
+
+        // Add 3 expense rows by default
+        addExpenseRow();
+        addExpenseRow();
+        addExpenseRow();
+      </script>
+
+      {% if data %}
+      <section class="card" style="margin-top: 30px;">
+        <div class="form-footer">
+          <a class="primary" href="{{ download_url }}" download="{{ download_filename }}">
+            {{ download_label }}
+          </a>
+          <a class="file-meta" href="{{ preview_url }}" target="_blank" rel="noopener noreferrer">
+            Open preview in new tab
+          </a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div id="preview-error" class="error" style="display: none;"></div>
+        <iframe
+          id="preview-frame"
+          title="Travel Expense Report PDF"
+          style="width: 100%; height: 720px; border: 1px solid #e5e7eb; border-radius: 12px;"
+        ></iframe>
+      </section>
+
+      <script>
+        const previewUrl = "{{ preview_url }}";
+        if (previewUrl) {
+          const frame = document.getElementById("preview-frame");
+          const errorBox = document.getElementById("preview-error");
+
+          fetch(previewUrl)
+            .then(async (response) => {
+              if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Preview failed: ${response.status} ${text}`);
+              }
+              return response.blob();
+            })
+            .then((blob) => {
+              const objectUrl = URL.createObjectURL(blob);
+              frame.src = objectUrl;
+            })
+            .catch((error) => {
+              errorBox.textContent = error.message;
+              errorBox.style.display = "block";
+            });
+        }
+      </script>
+      {% endif %}
+    </div>
+  </body>
+</html>
