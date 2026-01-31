@@ -28,12 +28,26 @@ def _extension(filename: str) -> str:
 
 
 class PayslipUploadForm(forms.Form):
-    company_name = forms.CharField(label="Company Name", max_length=200)
-    company_address = forms.CharField(
-        label="Company Address", widget=forms.Textarea(attrs={"rows": 3})
+    company_name = forms.CharField(
+        label="Company Name", 
+        max_length=200,
+        widget=forms.TextInput(attrs={"placeholder": "Enter company name", "class": "form-input"})
     )
-    company_email = forms.EmailField(label="Company Email", required=False)
-    company_phone = forms.CharField(label="Company Phone", required=False, max_length=40)
+    company_address = forms.CharField(
+        label="Company Address", 
+        widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Enter full address", "class": "form-input"})
+    )
+    company_email = forms.EmailField(
+        label="Company Email", 
+        required=False,
+        widget=forms.EmailInput(attrs={"placeholder": "company@example.com", "class": "form-input"})
+    )
+    company_phone = forms.CharField(
+        label="Company Phone", 
+        required=False, 
+        max_length=40,
+        widget=forms.TextInput(attrs={"placeholder": "+91 00000 00000", "class": "form-input"})
+    )
     company_logo = forms.ImageField(label="Company Logo", required=False)
     salary_file = forms.FileField(label="Salary Statement (Excel)")
 
@@ -64,12 +78,17 @@ class PayslipUploadForm(forms.Form):
 
 class OfferLetterForm(forms.Form):
     OFFER_TYPES = [
+        ("", "-- Select Offer Type --"),
         ("internship", "INTERNSHIP OFFER LETTER"),
         ("appointment", "Appointment Order"),
         ("employment_offer", "OFFER LETTER"),
     ]
 
-    offer_type = forms.ChoiceField(label="Offer Letter Type", choices=OFFER_TYPES)
+    offer_type = forms.ChoiceField(
+        label="Offer Letter Type", 
+        choices=OFFER_TYPES,
+        widget=forms.Select(attrs={'class': 'offer-type-select'})
+    )
     
     # Internship/Offer Letter fields
     name = forms.CharField(label="Name", max_length=200, required=False)
@@ -184,6 +203,9 @@ class TravelExpenseForm(forms.Form):
     reporting_period_end = forms.DateField(
         label="Reporting Period End", widget=forms.DateInput(attrs={"type": "date"})
     )
+    
+    # Report Number (auto-generated)
+    report_number = forms.CharField(label="Report Number", max_length=50, required=False)
     
     # Currency
     report_currency = forms.CharField(label="Report Currency", max_length=10, initial="INR")

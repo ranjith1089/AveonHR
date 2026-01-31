@@ -1033,21 +1033,22 @@ def build_experience_certificate_pdf(data: dict) -> bytes:
 
 def build_travel_expense_pdf(data: dict) -> bytes:
     import json
+    from datetime import datetime
     
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=15 * mm,
-        leftMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
     )
     styles = getSampleStyleSheet()
     story: list = []
 
     # Extract data
-    company_name = str(data.get("company_name_travel", "")).strip()
+    company_name = str(data.get("company_name_travel", "")).strip().upper()
     company_address = str(data.get("company_address_travel", "")).strip()
     company_city_state = str(data.get("company_city_state", "")).strip()
     company_country = str(data.get("company_country", "India")).strip()
@@ -1083,77 +1084,128 @@ def build_travel_expense_pdf(data: dict) -> bytes:
     else:
         period_end_str = "-"
 
-    # Header with company info and title
-    header_data = [
-        [
-            Paragraph(f"<font color='#9ca3af' size=8>{company_name}<br/>{company_address}<br/>{company_city_state}<br/>{company_country}</font>", styles["Normal"]),
-            Paragraph("<b>Expense Report</b><br/><font size=10 color='#6b7280'>ER-10001</font>", styles["Title"])
-        ]
-    ]
-    header_table = Table(header_data, colWidths=[95 * mm, 85 * mm])
-    header_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (0, 0), "LEFT"),
-                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
-        )
+    # Get report number
+    report_number = str(data.get("report_number", "ER-10001")).strip()
+    
+    # Header: Company Name (Left, Bold) and "EXPENSE REPORT" (Right, Gray)
+    header_style_left = ParagraphStyle(
+        'HeaderLeft',
+        parent=styles['Normal'],
+        fontSize=14,
+        fontName='Helvetica-Bold',
+        textColor=colors.black,
+        leading=16
     )
+    
+    header_style_right = ParagraphStyle(
+        'HeaderRight',
+        parent=styles['Normal'],
+        fontSize=24,
+        fontName='Helvetica',
+        textColor=colors.HexColor('#9ca3af'),
+        alignment=2,  # Right align
+        leading=28
+    )
+    
+    company_info = Paragraph(
+        f"<b>{company_name}</b><br/>"
+        f"<font size=9>📍 {company_address}<br/>"
+        f"📍 {company_city_state}, {company_country}</font>",
+        header_style_left
+    )
+    
+    title_info = Paragraph(
+        f"EXPENSE<br/>REPORT<br/>"
+        f"<font size=10 color='black'><b>REF: {report_number}</b></font>",
+        header_style_right
+    )
+    
+    header_table = Table([[company_info, title_info]], colWidths=[100 * mm, 70 * mm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+    ]))
     story.append(header_table)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 20))
 
-    # Report details section
-    story.append(Paragraph(f"<b>Report Title:</b> {report_title}", styles["Normal"]))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(f"<b>Business Purpose:</b> {business_purpose}", styles["Normal"]))
-    story.append(Spacer(1, 12))
-
-    # Submitted info table
-    info_data = [
-        ["Submitted By:", submitted_by, "Submitted On:", submitted_on_str],
-        ["Report To:", report_to, "Reporting Period:", f"{period_start_str} to {period_end_str}"],
-    ]
-    info_table = Table(info_data, colWidths=[40 * mm, 50 * mm, 40 * mm, 50 * mm])
-    info_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f9fafb")),
-                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f9fafb")),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ]
-        )
+    # Report Details Section - Clean layout matching image
+    label_style = ParagraphStyle(
+        'Label',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#6b7280'),
+        spaceAfter=2
     )
-    story.append(info_table)
-    story.append(Spacer(1, 16))
+    
+    value_style = ParagraphStyle(
+        'Value',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica-Bold',
+        spaceAfter=12
+    )
+    
+    # Two-column layout for report details
+    details_data = [
+        [
+            Paragraph("REPORT TITLE", label_style),
+            Paragraph("SUBMITTED BY", label_style),
+            Paragraph("SUBMITTED ON", label_style),
+        ],
+        [
+            Paragraph(report_title, value_style),
+            Paragraph(submitted_by, value_style),
+            Paragraph(submitted_on_str, value_style),
+        ],
+        [
+            Paragraph("BUSINESS PURPOSE", label_style),
+            Paragraph("REPORTING PERIOD", label_style),
+            Paragraph("REPORT TO", label_style),
+        ],
+        [
+            Paragraph(business_purpose, value_style),
+            Paragraph(f"{period_start_str} - {period_end_str}", value_style),
+            Paragraph(report_to, value_style),
+        ],
+    ]
+    
+    details_table = Table(details_data, colWidths=[57 * mm, 57 * mm, 56 * mm])
+    details_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(details_table)
+    story.append(Spacer(1, 20))
 
     # Get report currency
     report_currency = str(data.get("report_currency", "INR")).strip()
+    currency_symbol = {'INR': '₹', 'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥'}.get(report_currency, '₹')
     
-    # Expense Details Table
+    # Expense Table Header
     expense_table_data = [
-        ["Date", "Expense Description", "Merchant", f"Amount ({report_currency})"]
+        [
+            Paragraph("<b>DATE</b>", ParagraphStyle('th', fontSize=9, textColor=colors.HexColor('#6b7280'))),
+            Paragraph("<b>DESCRIPTION</b>", ParagraphStyle('th', fontSize=9, textColor=colors.HexColor('#6b7280'))),
+            Paragraph("<b>MERCHANT</b>", ParagraphStyle('th', fontSize=9, textColor=colors.HexColor('#6b7280'))),
+            Paragraph("<b>AMOUNT</b>", ParagraphStyle('th', fontSize=9, textColor=colors.HexColor('#6b7280'), alignment=2)),
+        ]
     ]
     
     total_amount = 0
-    merchant_totals = {}
     
-    for idx, exp in enumerate(expenses):
+    for exp in expenses:
         exp_date = exp.get("date", "-")
         description = exp.get("description", "-")
-        merchant = exp.get("merchant", "-")
+        merchant = exp.get("merchant", "—") or "—"
         amount = float(exp.get("amount", 0))
         
         # Format date
         if exp_date and exp_date != "-":
             try:
-                from datetime import datetime
                 date_obj = datetime.strptime(exp_date, "%Y-%m-%d")
-                exp_date = date_obj.strftime("%b. %d, %Y").replace(" 0", " ")
+                exp_date = date_obj.strftime("%d %b %Y")
             except:
                 pass
         
@@ -1161,164 +1213,95 @@ def build_travel_expense_pdf(data: dict) -> bytes:
             exp_date,
             description,
             merchant,
-            f"{amount:,.2f}"
+            f"{currency_symbol}{amount:,.2f}"
         ])
         
         total_amount += amount
-        merchant_totals[merchant] = merchant_totals.get(merchant, 0) + amount
-
-    expense_table_data.append([
-        "", "", "TOTAL", f"{total_amount:,.2f}"
-    ])
 
     expense_table = Table(
         expense_table_data,
-        colWidths=[32 * mm, 70 * mm, 48 * mm, 30 * mm]
+        colWidths=[35 * mm, 75 * mm, 35 * mm, 25 * mm]
     )
     expense_table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6b7280")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 10),
-                ("ALIGN", (3, 1), (3, -1), "RIGHT"),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f3f4f6")),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("LINEABOVE", (0, -1), (-1, -1), 1, colors.grey),
+                # Header styling
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor('#e5e7eb')),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LINEBELOW", (0, 1), (-1, -1), 0.5, colors.HexColor('#f3f4f6')),
             ]
         )
     )
     story.append(expense_table)
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 20))
 
-    # Merchant-wise Spending Analysis
-    if merchant_totals:
-        story.append(Paragraph("<b>MERCHANT-WISE SPENDING ANALYSIS</b>", styles["Heading2"]))
-        story.append(Spacer(1, 6))
-
-        merchant_data = [[f"Merchant", f"Amount ({report_currency})", "Percentage"]]
-        for merchant, amount in sorted(merchant_totals.items(), key=lambda x: x[1], reverse=True):
-            percentage = (amount / total_amount * 100) if total_amount > 0 else 0
-            merchant_data.append([
-                merchant,
-                f"{amount:,.2f}",
-                f"{percentage:.1f}%"
-            ])
-
-        merchant_table = Table(merchant_data, colWidths=[60 * mm, 40 * mm, 40 * mm])
-        merchant_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#10b981")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-                    ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                ]
-            )
-        )
-        story.append(merchant_table)
-        story.append(Spacer(1, 12))
-
-    # Policy Compliance Check
-    policy_violations = []
-    for idx, exp in enumerate(expenses):
-        amount = float(exp.get("amount", 0))
-        if amount > 10000:
-            policy_violations.append(f"Expense #{idx+1}: Amount exceeds policy limit")
-    
-    story.append(Paragraph("<b>POLICY VIOLATIONS & ALERTS</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
-    
-    if policy_violations:
-        for violation in policy_violations:
-            story.append(Paragraph(f"• <font color='red'>{violation}</font>", styles["Normal"]))
-    else:
-        story.append(Paragraph("• <font color='green'>No policy violations detected</font>", styles["Normal"]))
-    story.append(Spacer(1, 12))
-
-    # Reimbursement Status Report
-    story.append(Paragraph("<b>REIMBURSEMENT STATUS REPORT</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
-
-    reimbursement_data = [
-        ["Description", f"Amount ({report_currency})"],
-        ["Total Expenses", f"{total_amount:,.2f}"],
-        ["Policy Deductions", "0.00"],
-        ["Net Reimbursable", f"{total_amount:,.2f}"],
-        ["Status", "Pending Approval"],
+    # Subtotal and Grand Total - Right aligned
+    subtotal_data = [
+        ["", "", "Subtotal", f"{currency_symbol}{total_amount:,.2f}"],
     ]
-
-    reimb_table = Table(reimbursement_data, colWidths=[70 * mm, 40 * mm])
-    reimb_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f59e0b")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                ("BACKGROUND", (0, -2), (-1, -2), colors.HexColor("#fef3c7")),
-                ("FONTNAME", (0, -2), (-1, -2), "Helvetica-Bold"),
-            ]
-        )
-    )
-    story.append(reimb_table)
-    story.append(Spacer(1, 12))
-
-    # Key Insights & Cost Optimization Suggestions
-    story.append(Paragraph("<b>KEY INSIGHTS & COST OPTIMIZATION SUGGESTIONS</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
-
-    insights = []
     
-    # Generate insights based on data
-    if total_amount > 20000:
-        insights.append("• High total expenses detected. Consider budget review for future trips.")
+    subtotal_table = Table(subtotal_data, colWidths=[35 * mm, 75 * mm, 35 * mm, 25 * mm])
+    subtotal_table.setStyle(TableStyle([
+        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(subtotal_table)
+    story.append(Spacer(1, 8))
     
-    if len(merchant_totals) > 0:
-        max_merchant = max(merchant_totals.items(), key=lambda x: x[1])
-        insights.append(f"• Highest spending merchant: {max_merchant[0]} ({report_currency} {max_merchant[1]:,.2f})")
-    
-    insights.append("• Consider advance booking to reduce accommodation and travel costs.")
-    insights.append("• Use corporate travel partners for better rates and policy compliance.")
-    insights.append("• Digital receipts improve processing time by 40%.")
-    
-    if policy_violations:
-        insights.append(f"• {len(policy_violations)} policy violation(s) require manager review.")
-
-    for insight in insights:
-        story.append(Paragraph(insight, styles["Normal"]))
-    story.append(Spacer(1, 16))
-
-    # Approval Section
-    story.append(Spacer(1, 12))
-    approval_data = [
-        ["Employee Signature:", "", "Date:", ""],
-        ["", "", "", ""],
-        ["Approved By:", report_to, "Date:", ""],
-        ["Signature:", "", "", ""],
+    # Grand Total - Bold and Blue
+    grand_total_data = [
+        ["", "", Paragraph("<b>Grand Total</b>", styles['Normal']), 
+         Paragraph(f"<font size=16 color='#0078d4'><b>{currency_symbol}{total_amount:,.2f}</b></font>", styles['Normal'])],
     ]
-
-    approval_table = Table(approval_data, colWidths=[40 * mm, 50 * mm, 30 * mm, 30 * mm])
-    approval_table.setStyle(
-        TableStyle(
-            [
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]
-        )
+    
+    grand_total_table = Table(grand_total_data, colWidths=[35 * mm, 75 * mm, 35 * mm, 25 * mm])
+    grand_total_table.setStyle(TableStyle([
+        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+        ('FONTSIZE', (2, 0), (2, 0), 12),
+        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(grand_total_table)
+    story.append(Spacer(1, 40))
+    
+    # Signature Section
+    signature_data = [
+        [Paragraph("<b>EMPLOYEE SIGNATURE</b>", styles['Normal']), 
+         Paragraph("<b>APPROVER SIGNATURE</b>", styles['Normal'])],
+        ["", ""],
+        ["", ""],
+    ]
+    
+    signature_table = Table(signature_data, colWidths=[85 * mm, 85 * mm])
+    signature_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor('#e5e7eb')),
+        ('TOPPADDING', (0, 0), (-1, 0), 30),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+    ]))
+    story.append(signature_table)
+    story.append(Spacer(1, 30))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#9ca3af'),
+        alignment=1  # Center
     )
-    story.append(approval_table)
-
+    
+    story.append(Paragraph(
+        f"GENERATED VIA {company_name} EXPENSE MANAGEMENT SYSTEM",
+        footer_style
+    ))
+    
     doc.build(story)
     return buffer.getvalue()
 

@@ -15,23 +15,72 @@
         </svg>
         Back to Home
       </a>
-      <header class="header">
-        <div>
-          <p class="eyebrow">Offer Letter</p>
-          <h1>Generator</h1>
-          <p class="subtext">Fill the details to generate your offer letter.</p>
+      <!-- Wizard Header -->
+      <div class="wizard-header">
+        <h1>🧾 Offer Letter Generator</h1>
+        <p class="wizard-subtitle">Create professional offer letters in minutes</p>
+        
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+          <div class="step active" id="step-indicator-1">
+            <span class="step-number">①</span>
+            <span class="step-label">Select Type</span>
+          </div>
+          <div class="step-arrow">→</div>
+          <div class="step" id="step-indicator-2">
+            <span class="step-number">②</span>
+            <span class="step-label">Details</span>
+          </div>
+          <div class="step-arrow">→</div>
+          <div class="step" id="step-indicator-3">
+            <span class="step-number">③</span>
+            <span class="step-label">Preview</span>
+          </div>
+          <div class="step-arrow">→</div>
+          <div class="step" id="step-indicator-4">
+            <span class="step-number">④</span>
+            <span class="step-label">Download</span>
+          </div>
         </div>
-      </header>
+      </div>
 
-      <section class="card">
-        <form method="post" id="offerLetterForm">
-          {% csrf_token %}
-          <div class="form-grid">
-            <p>
-              <label for="id_offer_type">{{ form.offer_type.label }}:</label>
-              {{ form.offer_type }}
+      <form method="post" id="offerLetterForm">
+        {% csrf_token %}
+        
+        <!-- Step 1: Select Offer Type -->
+        <section class="card wizard-card" id="step-1-card">
+          <div class="wizard-card-header">
+            <h2>Select Offer Letter Type</h2>
+            <p class="step-counter">Step 1 of 4</p>
+          </div>
+          
+          <div class="wizard-card-body">
+            <label for="id_offer_type" style="font-size: 15px; font-weight: 600; color: #736CA2; display: block; margin-bottom: 8px;">
+              Offer Letter Type
+            </label>
+            {{ form.offer_type }}
+            
+            <p class="wizard-help-text">
+              💡 This helps us apply the correct template.
             </p>
+          </div>
+          
+          <div class="wizard-card-footer">
+            <button type="button" class="primary wizard-continue" id="continue-btn" disabled>
+              Continue →
+            </button>
+          </div>
+        </section>
 
+        <!-- Step 2: Input Fields (Hidden initially) -->
+        <section class="card wizard-card" id="step-2-card" style="display: none;">
+          <div class="wizard-card-header">
+            <h2 id="selected-type-title">Fill Details</h2>
+            <p class="step-counter">Step 2 of 4</p>
+          </div>
+          
+          <div class="wizard-card-body">
+            <div class="form-grid">
             <!-- Internship/Offer Letter Fields -->
             <div id="internship-fields" class="letter-fields">
               <p>
@@ -216,41 +265,94 @@
                 {{ form.pf_employer_annual }}
               </p>
             </div>
+            </div>
           </div>
-          <div class="form-footer">
-            <div class="file-meta">Fill all required fields for the selected letter type.</div>
-            <button type="submit" class="primary">Generate Letter</button>
+          
+          <div class="wizard-card-footer">
+            <button type="button" class="secondary wizard-back" id="back-btn">
+              ← Back
+            </button>
+            <button type="submit" class="primary">
+              Generate Letter →
+            </button>
           </div>
-        </form>
-      </section>
+        </section>
+      </form>
 
       <script>
-        // Show/hide fields based on offer type selection
+        // Wizard Navigation
         const offerTypeField = document.getElementById('id_offer_type');
+        const continueBtn = document.getElementById('continue-btn');
+        const backBtn = document.getElementById('back-btn');
+        const step1Card = document.getElementById('step-1-card');
+        const step2Card = document.getElementById('step-2-card');
+        const selectedTypeTitle = document.getElementById('selected-type-title');
         const internshipFields = document.getElementById('internship-fields');
         const appointmentFields = document.getElementById('appointment-fields');
         const employmentOfferFields = document.getElementById('employment-offer-fields');
 
-        function updateFieldsVisibility() {
+        // Enable/disable continue button based on selection
+        offerTypeField.addEventListener('change', function() {
+          if (offerTypeField.value !== '') {
+            continueBtn.disabled = false;
+            continueBtn.style.opacity = '1';
+            continueBtn.style.cursor = 'pointer';
+          } else {
+            continueBtn.disabled = true;
+            continueBtn.style.opacity = '0.5';
+            continueBtn.style.cursor = 'not-allowed';
+          }
+        });
+
+        // Continue to Step 2
+        continueBtn.addEventListener('click', function() {
           const selectedType = offerTypeField.value;
+          
+          if (selectedType === '') return;
           
           // Hide all field groups first
           internshipFields.style.display = 'none';
           appointmentFields.style.display = 'none';
           employmentOfferFields.style.display = 'none';
           
-          // Show the relevant field group
+          // Show relevant fields based on selection
           if (selectedType === 'appointment') {
             appointmentFields.style.display = 'block';
+            selectedTypeTitle.textContent = 'Appointment Order Details';
           } else if (selectedType === 'employment_offer') {
             employmentOfferFields.style.display = 'block';
-          } else {
+            selectedTypeTitle.textContent = 'Offer Letter Details';
+          } else if (selectedType === 'internship') {
             internshipFields.style.display = 'block';
+            selectedTypeTitle.textContent = 'Internship Offer Letter Details';
           }
-        }
+          
+          // Move to Step 2
+          step1Card.style.display = 'none';
+          step2Card.style.display = 'block';
+          
+          // Update step indicators
+          document.getElementById('step-indicator-1').classList.remove('active');
+          document.getElementById('step-indicator-1').classList.add('completed');
+          document.getElementById('step-indicator-2').classList.add('active');
+          
+          // Scroll to top
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
 
-        offerTypeField.addEventListener('change', updateFieldsVisibility);
-        updateFieldsVisibility(); // Initialize on page load
+        // Back to Step 1
+        backBtn.addEventListener('click', function() {
+          step2Card.style.display = 'none';
+          step1Card.style.display = 'block';
+          
+          // Update step indicators
+          document.getElementById('step-indicator-2').classList.remove('active');
+          document.getElementById('step-indicator-1').classList.remove('completed');
+          document.getElementById('step-indicator-1').classList.add('active');
+          
+          // Scroll to top
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
       </script>
 
       {% if data %}

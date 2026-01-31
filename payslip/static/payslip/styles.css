@@ -1,5 +1,58 @@
 /* Fluent UI Design System - Modern Professional Look */
-@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap');
+
+/* Global Date Input Styling with Teal Border & Checkmark */
+input[type="date"] {
+  position: relative;
+  padding: 10px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #9ca3af;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+input[type="date"]:focus {
+  outline: none;
+  border-color: #44DBB7;
+  box-shadow: 0 0 0 3px rgba(68, 219, 183, 0.1);
+}
+
+input[type="date"]:valid {
+  border-color: #44DBB7;
+  color: #374151;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+/* Date field wrapper with checkmark */
+.date-field-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.date-field-wrapper input[type="date"]:valid + .date-checkmark,
+.date-field-wrapper.has-value .date-checkmark {
+  display: block;
+}
+
+.date-checkmark {
+  position: absolute;
+  right: 42px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #44DBB7;
+  font-size: 18px;
+  font-weight: bold;
+  display: none;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1;
+}
 
 :root {
   /* Fluent UI Color Palette */
@@ -60,6 +113,254 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: var(--spacing-xxl);
+}
+
+/* Wizard Interface Styles */
+.wizard-header {
+  text-align: center;
+  padding: 32px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  box-shadow: var(--depth-4);
+}
+
+.wizard-header h1 {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--neutral-dark);
+  margin-bottom: 8px;
+}
+
+.wizard-subtitle {
+  font-size: 16px;
+  color: var(--neutral-secondary);
+  margin-bottom: 32px;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 2px solid var(--neutral-lightest);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+}
+
+.step.active {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.step.completed {
+  opacity: 0.7;
+}
+
+.step.completed .step-number {
+  background: #44DBB7;
+  color: white;
+}
+
+.step-number {
+  font-size: 24px;
+  font-weight: 600;
+  color: #736CA2;
+  background: var(--neutral-lighter);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+  background: linear-gradient(135deg, #F48190 0%, #F9A8BC 100%);
+  color: white;
+  border-color: #F9A8BC;
+  box-shadow: 0 4px 15px rgba(244, 129, 144, 0.4);
+}
+
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neutral-secondary);
+}
+
+.step.active .step-label {
+  color: #736CA2;
+}
+
+.step-arrow {
+  font-size: 20px;
+  color: var(--neutral-tertiary);
+  margin-top: -20px;
+}
+
+.wizard-card {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.wizard-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--neutral-lightest);
+}
+
+.wizard-card-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--neutral-dark);
+  margin: 0;
+}
+
+.step-counter {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--neutral-secondary);
+  background: var(--neutral-lighter);
+  padding: 6px 16px;
+  border-radius: 20px;
+}
+
+.wizard-card-body {
+  padding: 8px 0;
+}
+
+.wizard-help-text {
+  font-size: 14px;
+  color: var(--neutral-secondary);
+  background: #f8f9ff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 3px solid #736CA2;
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.wizard-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px solid var(--neutral-lightest);
+}
+
+.wizard-continue {
+  width: 100%;
+  opacity: 0.5;
+  cursor: not-allowed;
+  transition: all 0.3s ease;
+}
+
+.wizard-continue:not(:disabled) {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.wizard-back {
+  background: white;
+  border: 2px solid var(--neutral-tertiary);
+  color: var(--neutral-primary);
+  padding: 12px 28px;
+}
+
+.wizard-back:hover {
+  background: var(--neutral-lighter);
+  border-color: var(--neutral-secondary);
+}
+
+/* Responsive Wizard */
+@media (max-width: 768px) {
+  .progress-steps {
+    gap: 8px;
+  }
+  
+  .step-label {
+    display: none;
+  }
+  
+  .step-number {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+  
+  .wizard-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .wizard-card-footer {
+    flex-direction: column;
+  }
+  
+  .wizard-back {
+    width: 100%;
+  }
+}
+
+/* Input Fields Card Animation */
+#step-2-card {
+  animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Offer Type Select - Make it prominent */
+.offer-type-select,
+#id_offer_type {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 14px 16px !important;
+  border: 3px solid #736CA2 !important;
+  border-radius: 8px !important;
+  background: linear-gradient(to right, #ffffff, #faf8fd) !important;
+  color: #736CA2 !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 2px 8px rgba(115, 108, 162, 0.2) !important;
+  width: 100% !important;
+}
+
+.offer-type-select:hover,
+#id_offer_type:hover {
+  border-color: #F48190 !important;
+  box-shadow: 0 4px 12px rgba(115, 108, 162, 0.3) !important;
+}
+
+.offer-type-select:focus,
+#id_offer_type:focus {
+  outline: none !important;
+  border-color: #44DBB7 !important;
+  box-shadow: 0 0 0 4px rgba(68, 219, 183, 0.2) !important;
 }
 
 /* Back Button */
@@ -232,11 +533,7 @@ select:valid {
   background: white;
 }
 
-input:valid:not(:placeholder-shown)::after,
-textarea:valid:not(:placeholder-shown)::after {
-  content: '✓';
-  color: #10B981;
-}
+/* Removed ::after checkmark - using JavaScript-based checkmark instead */
 
 textarea {
   resize: vertical;
