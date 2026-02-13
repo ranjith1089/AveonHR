@@ -8,6 +8,7 @@ from .views import (
     preview_pdf,
     travel_expense,
     upload_payslips,
+    proposal_quotation,
 )
 
 urlpatterns = [
@@ -16,6 +17,7 @@ urlpatterns = [
     path("experience-certificate/", experience_certificate, name="experience_certificate"),
     path("travel-expense/", travel_expense, name="travel_expense"),
     path("payslip/", upload_payslips, name="upload_payslips"),
+    path("proposal-quotation/", proposal_quotation, name="proposal_quotation"),
     path("preview/<str:token>/", preview_pdf, name="preview_pdf"),
     path("download/<str:token>/", download_file, name="download_file"),
 ]
