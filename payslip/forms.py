@@ -223,6 +223,7 @@ class ProposalQuotationForm(forms.Form):
         ("AFFILIATED", "AFFILIATED"),
         ("ARTS & SCIENCE", "ARTS & SCIENCE"),
         ("ENGINEERING", "ENGINEERING"),
+        ("SCHOOL", "SCHOOL"),
     ]
 
     client_name = forms.CharField(label="Client Name", max_length=200)

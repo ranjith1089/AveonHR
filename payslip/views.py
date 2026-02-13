@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from io import BytesIO
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
@@ -8,6 +9,8 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_GET
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 from .forms import (
     ExperienceCertificateForm,
@@ -496,6 +499,55 @@ def _as_text_download_response(content: str, filename: str = "aveon_cms_erp_prop
     response["Cache-Control"] = "no-store"
     return response
 
+
+
+def _build_proposal_pdf_bytes(content: str) -> bytes:
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    left_margin = 40
+    top_margin = 50
+    bottom_margin = 40
+    line_height = 14
+
+    y = height - top_margin
+    for raw_line in content.splitlines():
+        line = raw_line if raw_line.strip() else " "
+        if len(line) <= 115:
+            wrapped = [line]
+        else:
+            wrapped = []
+            current = []
+            for word in line.split():
+                candidate = " ".join(current + [word])
+                if len(candidate) <= 115:
+                    current.append(word)
+                else:
+                    if current:
+                        wrapped.append(" ".join(current))
+                    current = [word]
+            if current:
+                wrapped.append(" ".join(current))
+
+        for out in wrapped:
+            if y <= bottom_margin:
+                pdf.showPage()
+                y = height - top_margin
+            pdf.drawString(left_margin, y, out)
+            y -= line_height
+
+    pdf.save()
+    data = buffer.getvalue()
+    buffer.close()
+    return data
+
+
+def _as_pdf_download_response(content: str, filename: str = "aveon_cms_erp_proposal.pdf") -> HttpResponse:
+    response = HttpResponse(_build_proposal_pdf_bytes(content), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Cache-Control"] = "no-store"
+    return response
+
 def proposal_quotation(request: HttpRequest) -> HttpResponse:
     context = {"form": ProposalQuotationForm()}
     if request.method != "POST":
@@ -514,6 +566,8 @@ def proposal_quotation(request: HttpRequest) -> HttpResponse:
 
     if request.POST.get("action") == "download":
         return _as_text_download_response(proposal_text)
+    if request.POST.get("action") == "download_pdf":
+        return _as_pdf_download_response(proposal_text)
 
     context["form"] = form
     context["proposal_text"] = proposal_text

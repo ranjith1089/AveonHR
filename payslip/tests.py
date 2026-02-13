@@ -63,3 +63,25 @@ class ProposalQuotationViewTests(TestCase):
         text = response.content.decode('utf-8')
         self.assertIn('1. COVER PAGE', text)
         self.assertIn('12. AUTHORIZATION & SIGNATURE', text)
+
+
+    def test_school_institution_type_is_available(self):
+        response = self.client.get(reverse('proposal_quotation'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'SCHOOL')
+
+    def test_post_download_returns_pdf_file(self):
+        response = self.client.post(
+            reverse('proposal_quotation'),
+            {
+                'client_name': 'ABC School',
+                'client_location': 'Coimbatore, Tamil Nadu',
+                'institution_type': 'SCHOOL',
+                'action': 'download_pdf',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment; filename="aveon_cms_erp_proposal.pdf"', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF-'))
