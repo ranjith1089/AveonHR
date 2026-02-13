@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% load static %}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proposal Quotation Generator</title>
+    <link rel="stylesheet" href="{% static 'payslip/styles.css' %}" />
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-button">← Back to Home</a>
+
+      <header class="card" style="margin-bottom: 16px;">
+        <h1>📄 Proposal Quotation Generator</h1>
+        <p>Create a complete, professional, ready-to-send Aveon CMS ERP proposal in plain text format.</p>
+      </header>
+
+      <section class="card">
+        <form method="post">
+          {% csrf_token %}
+          <div class="form-grid">
+            <p>
+              <label for="id_client_name">{{ form.client_name.label }}:</label>
+              {{ form.client_name }}
+            </p>
+            <p>
+              <label for="id_client_location">{{ form.client_location.label }}:</label>
+              {{ form.client_location }}
+            </p>
+            <p>
+              <label for="id_institution_type">{{ form.institution_type.label }}:</label>
+              {{ form.institution_type }}
+            </p>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="submit" class="primary" name="action" value="generate">Generate Proposal</button>
+            <button type="submit" class="secondary" name="action" value="download">Download .txt</button>
+          </div>
+        </form>
+      </section>
+
+      {% if proposal_text %}
+      <section class="card" style="margin-top: 16px;">
+        <h2>Generated Proposal (Plain Text)</h2>
+        <p>Copy the full text below and paste into Word for final branding and PDF conversion.</p>
+        <textarea rows="38" readonly style="width: 100%; font-family: monospace; white-space: pre;">{{ proposal_text }}</textarea>
+      </section>
+      {% endif %}
+    </div>
+  </body>
+</html>
