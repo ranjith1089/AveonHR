@@ -216,3 +216,16 @@ class TravelExpenseForm(forms.Form):
         required=False
     )
 
+
+class ProposalQuotationForm(forms.Form):
+    INSTITUTION_TYPES = [
+        ("AUTONOMOUS", "AUTONOMOUS"),
+        ("AFFILIATED", "AFFILIATED"),
+        ("ARTS & SCIENCE", "ARTS & SCIENCE"),
+        ("ENGINEERING", "ENGINEERING"),
+        ("SCHOOL", "SCHOOL"),
+    ]
+
+    client_name = forms.CharField(label="Client Name", max_length=200)
+    client_location = forms.CharField(label="Client Location", max_length=200)
+    institution_type = forms.ChoiceField(label="Institution Type", choices=INSTITUTION_TYPES)
