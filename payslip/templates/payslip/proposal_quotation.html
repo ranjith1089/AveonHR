@@ -17,7 +17,7 @@
       </header>
 
       <section class="card">
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
           {% csrf_token %}
           <div class="form-grid">
             <p>
@@ -32,8 +32,16 @@
               <label for="id_institution_type">{{ form.institution_type.label }}:</label>
               {{ form.institution_type }}
             </p>
+            <p>
+              <label for="id_proposal_date">{{ form.proposal_date.label }}:</label>
+              {{ form.proposal_date }}
+            </p>
+            <p>
+              <label for="id_client_logo">{{ form.client_logo.label }}:</label>
+              {{ form.client_logo }}
+            </p>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div class="proposal-actions">
             <button type="submit" class="primary" name="action" value="generate">Generate Proposal</button>
             <button type="submit" class="secondary" name="action" value="download">Download .txt</button>
             <button type="submit" class="secondary" name="action" value="download_pdf">Download PDF</button>
@@ -44,7 +52,7 @@
       {% if proposal_text %}
       <section class="card" style="margin-top: 16px;">
         <h2>Generated Proposal (Plain Text)</h2>
-        <p>Copy the full text below and paste into Word for final branding and PDF conversion.</p>
+        <p>Copy the full text below (or use <b>Download PDF</b> for an A4 formatted proposal with logo).</p>
         <textarea rows="38" readonly style="width: 100%; font-family: monospace; white-space: pre;">{{ proposal_text }}</textarea>
       </section>
       {% endif %}

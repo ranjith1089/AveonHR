@@ -921,7 +921,7 @@ def build_experience_certificate_pdf(data: dict) -> bytes:
         pagesize=A4,
         rightMargin=20 * mm,
         leftMargin=20 * mm,
-        topMargin=20 * mm,
+        topMargin=55 * mm,
         bottomMargin=20 * mm,
     )
     styles = getSampleStyleSheet()
@@ -941,6 +941,7 @@ def build_experience_certificate_pdf(data: dict) -> bytes:
     story: list = []
 
     # Extract data
+    certificate_type = str(data.get("certificate_type", "employee")).strip() or "employee"
     title = str(data.get("title", "")).strip()
     employee_name = str(data.get("employee_name_exp", "")).strip()
     employee_no = str(data.get("employee_no", "")).strip()
@@ -951,6 +952,13 @@ def build_experience_certificate_pdf(data: dict) -> bytes:
     designation = str(data.get("designation_exp", "")).strip()
     signatory = str(data.get("signatory_exp", "")).strip()
     signatory_designation = str(data.get("signatory_designation_exp", "")).strip()
+
+    intern_name = str(data.get("intern_name", "")).strip()
+    internship_domain = str(data.get("internship_domain", "")).strip()
+    internship_company = str(data.get("internship_company", "")).strip()
+    internship_location = str(data.get("internship_location", "")).strip()
+    internship_start_date = data.get("internship_start_date")
+    internship_end_date = data.get("internship_end_date")
 
     # Format dates
     today = date.today()
@@ -970,61 +978,99 @@ def build_experience_certificate_pdf(data: dict) -> bytes:
     if gender.lower() == "male":
         his_her = "his"
         him_her = "him"
+        he_she = "he"
     else:
         his_her = "her"
         him_her = "her"
+        he_she = "she"
 
     # Date
     story.append(Paragraph(f"Date: {date_str}", styles["Normal"]))
     story.append(Spacer(1, 16))
 
-    # Title
-    story.append(Paragraph("Experience Letter", styles["Title"]))
-    story.append(Spacer(1, 12))
+    if certificate_type == "internship":
+        # Format internship dates
+        if internship_start_date:
+            internship_start_str = internship_start_date.strftime("%b. %d, %Y").replace(" 0", " ")
+        else:
+            internship_start_str = "-"
+        if internship_end_date:
+            internship_end_str = internship_end_date.strftime("%b. %d, %Y").replace(" 0", " ")
+        else:
+            internship_end_str = "-"
 
-    # To whom it may concern
-    story.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", center_style))
-    story.append(Spacer(1, 16))
+        story.append(Paragraph("Internship Experience Certificate", styles["Title"]))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", center_style))
+        story.append(Spacer(1, 16))
 
-    # Body
-    story.append(Paragraph(
-        f"This is to certify that {title} {employee_name} bearing employee ID {employee_no} has worked with "
-        f"{company_name} and left our organization on {leaving_date_str}.",
-        letter_style,
-    ))
-    story.append(Spacer(1, 8))
+        story.append(
+            Paragraph(
+                f"This is to certify that {intern_name} has done {his_her} internship in "
+                f"{internship_domain} at our firm {internship_company} - {internship_location}, "
+                f"from {internship_start_str} to {internship_end_str}.",
+                letter_style,
+            )
+        )
+        story.append(Spacer(1, 16))
+        story.append(
+            Paragraph(
+                f"During {his_her} internship, {intern_name} demonstrated {his_her} skills with self–motivation to learn "
+                f"new skills. {his_her.capitalize()} performance exceeded our expectations, and {he_she} was able to "
+                f"complete the internship on time.",
+                letter_style,
+            )
+        )
+        story.append(Spacer(1, 16))
+        story.append(Paragraph(f"We wish {him_her} all the best in {his_her} future endeavors.", letter_style))
+        story.append(Spacer(1, 24))
+    else:
+        # Employee experience letter
+        story.append(Paragraph("Experience Letter", styles["Title"]))
+        story.append(Spacer(1, 12))
 
-    story.append(Paragraph(
-        f"<b>Duration:</b> {join_date_str} to {leaving_date_str}",
-        letter_style,
-    ))
-    story.append(Spacer(1, 8))
+        story.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", center_style))
+        story.append(Spacer(1, 16))
 
-    story.append(Paragraph(
-        f"During {his_her} work tenure, {employee_name} has remained dedicated and loyal to {his_her} work and "
-        f"responsibilities with our company. The designation of {employee_name} at the time of leaving the "
-        f"organization was {designation}.",
-        letter_style,
-    ))
-    story.append(Spacer(1, 8))
+        story.append(
+            Paragraph(
+                f"This is to certify that {title} {employee_name} bearing employee ID {employee_no} has worked with "
+                f"{company_name} and left our organization on {leaving_date_str}.",
+                letter_style,
+            )
+        )
+        story.append(Spacer(1, 8))
 
-    story.append(Paragraph(
-        f"The employee's performance was outstanding, and we appreciate the services rendered to our organization. "
-        f"We wish {him_her} all the best for {his_her} future endeavors.",
-        letter_style,
-    ))
-    story.append(Spacer(1, 8))
+        story.append(Paragraph(f"<b>Duration:</b> {join_date_str} to {leaving_date_str}", letter_style))
+        story.append(Spacer(1, 8))
 
-    story.append(Paragraph(
-        "Please feel free to be in touch with us for any additional information.",
-        letter_style,
-    ))
-    story.append(Spacer(1, 24))
+        story.append(
+            Paragraph(
+                f"During {his_her} work tenure, {employee_name} has remained dedicated and loyal to {his_her} work and "
+                f"responsibilities with our company. The designation of {employee_name} at the time of leaving the "
+                f"organization was {designation}.",
+                letter_style,
+            )
+        )
+        story.append(Spacer(1, 8))
+
+        story.append(
+            Paragraph(
+                f"The employee's performance was outstanding, and we appreciate the services rendered to our organization. "
+                f"We wish {him_her} all the best for {his_her} future endeavors.",
+                letter_style,
+            )
+        )
+        story.append(Spacer(1, 8))
+
+        story.append(Paragraph("Please feel free to be in touch with us for any additional information.", letter_style))
+        story.append(Spacer(1, 24))
 
     # Signature
     story.append(Paragraph("Authorized Signatory,", letter_style))
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 36))
     story.append(Paragraph(signatory, letter_style))
+    story.append(Spacer(1, 6))
     story.append(Paragraph(signatory_designation, letter_style))
 
     doc.build(story)

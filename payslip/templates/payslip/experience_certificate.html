@@ -27,14 +27,147 @@
         <form method="post" id="experienceForm">
           {% csrf_token %}
           <div class="form-grid">
-            {{ form.as_p }}
+            <p>
+              <label for="id_certificate_type">{{ form.certificate_type.label }}:</label>
+              {{ form.certificate_type }}
+            </p>
+
+            <div id="employee-fields">
+              <p>
+                <label for="id_title">{{ form.title.label }}:</label>
+                {{ form.title }}
+              </p>
+              <p>
+                <label for="id_employee_name_exp">{{ form.employee_name_exp.label }}:</label>
+                {{ form.employee_name_exp }}
+              </p>
+              <p>
+                <label for="id_employee_no">{{ form.employee_no.label }}:</label>
+                {{ form.employee_no }}
+              </p>
+              <p>
+                <label for="id_company_name_exp">{{ form.company_name_exp.label }}:</label>
+                {{ form.company_name_exp }}
+              </p>
+              <p>
+                <label for="id_join_date_exp">{{ form.join_date_exp.label }}:</label>
+                {{ form.join_date_exp }}
+              </p>
+              <p>
+                <label for="id_leaving_date">{{ form.leaving_date.label }}:</label>
+                {{ form.leaving_date }}
+              </p>
+              <p>
+                <label for="id_designation_exp">{{ form.designation_exp.label }}:</label>
+                {{ form.designation_exp }}
+              </p>
+            </div>
+
+            <div id="internship-fields">
+              <p>
+                <label for="id_intern_name">{{ form.intern_name.label }}:</label>
+                {{ form.intern_name }}
+              </p>
+              <p>
+                <label for="id_internship_domain">{{ form.internship_domain.label }}:</label>
+                {{ form.internship_domain }}
+              </p>
+              <p>
+                <label for="id_internship_company">{{ form.internship_company.label }}:</label>
+                {{ form.internship_company }}
+              </p>
+              <p>
+                <label for="id_internship_location">{{ form.internship_location.label }}:</label>
+                {{ form.internship_location }}
+              </p>
+              <p>
+                <label for="id_internship_start_date">{{ form.internship_start_date.label }}:</label>
+                {{ form.internship_start_date }}
+              </p>
+              <p>
+                <label for="id_internship_end_date">{{ form.internship_end_date.label }}:</label>
+                {{ form.internship_end_date }}
+              </p>
+            </div>
+
+            <!-- Shared fields are moved into the correct order by JS -->
+            <div id="shared-fields" style="display:none;">
+              <p id="wrap_id_gender">
+                <label for="id_gender">{{ form.gender.label }}:</label>
+                {{ form.gender }}
+              </p>
+              <p id="wrap_id_signatory_exp">
+                <label for="id_signatory_exp">{{ form.signatory_exp.label }}:</label>
+                {{ form.signatory_exp }}
+              </p>
+              <p id="wrap_id_signatory_designation_exp">
+                <label for="id_signatory_designation_exp">{{ form.signatory_designation_exp.label }}:</label>
+                {{ form.signatory_designation_exp }}
+              </p>
+            </div>
           </div>
           <div class="form-footer">
-            <div class="file-meta">All fields are required.</div>
+            <div class="file-meta">Choose certificate type, then fill required fields.</div>
             <button type="submit" class="primary">Generate Certificate</button>
           </div>
         </form>
       </section>
+
+      <script>
+        (function () {
+          const typeSelect = document.getElementById("certificate_type");
+          if (!typeSelect) return;
+
+          const employeeFields = document.getElementById("employee-fields");
+          const internshipFields = document.getElementById("internship-fields");
+          const sharedFields = document.getElementById("shared-fields");
+
+          const wrapGender = document.getElementById("wrap_id_gender");
+          const wrapSignatory = document.getElementById("wrap_id_signatory_exp");
+          const wrapSignatoryDesig = document.getElementById("wrap_id_signatory_designation_exp");
+
+          const internshipDomainInput = document.getElementById("id_internship_domain");
+          const internshipEndInput = document.getElementById("id_internship_end_date");
+          const employeeCompanyInput = document.getElementById("id_company_name_exp");
+
+          function update() {
+            const v = typeSelect.value;
+
+            if (employeeFields) employeeFields.style.display = v === "employee" ? "" : "none";
+            if (internshipFields) internshipFields.style.display = v === "internship" ? "" : "none";
+
+            const showShared = v === "employee" || v === "internship";
+            if (!showShared) {
+              if (sharedFields) sharedFields.style.display = "none";
+              return;
+            }
+            if (sharedFields) sharedFields.style.display = "none"; // keep hidden container hidden
+
+            // Move Gender + Signatory fields into the requested order.
+            // Internship order:
+            // 1 Intern Name, 2 Domain, 3 Gender, 4 Company, 5 Location, 6 Start, 7 End, 8 Signatory, 9 Signatory Designation
+            if (v === "internship" && internshipFields) {
+              const domainWrap = internshipDomainInput?.closest("p");
+              const endWrap = internshipEndInput?.closest("p");
+              if (domainWrap && wrapGender) domainWrap.insertAdjacentElement("afterend", wrapGender);
+              if (endWrap && wrapSignatory) endWrap.insertAdjacentElement("afterend", wrapSignatory);
+              if (wrapSignatory && wrapSignatoryDesig) wrapSignatory.insertAdjacentElement("afterend", wrapSignatoryDesig);
+            }
+
+            // Employee: keep Gender after Company and Signatory at the end.
+            if (v === "employee" && employeeFields) {
+              const companyWrap = employeeCompanyInput?.closest("p");
+              if (companyWrap && wrapGender) companyWrap.insertAdjacentElement("afterend", wrapGender);
+              if (wrapSignatory) employeeFields.appendChild(wrapSignatory);
+              if (wrapSignatoryDesig) employeeFields.appendChild(wrapSignatoryDesig);
+            }
+          }
+
+          // initial
+          update();
+          typeSelect.addEventListener("change", update);
+        })();
+      </script>
 
       {% if data %}
       <section class="card">

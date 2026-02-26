@@ -15,6 +15,7 @@ class ProposalQuotationViewTests(TestCase):
                 'client_name': 'ABC College of Arts and Science',
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'AUTONOMOUS',
+                'proposal_date': '2026-02-13',
             },
         )
 
@@ -24,18 +25,17 @@ class ProposalQuotationViewTests(TestCase):
         self.assertContains(response, 'AUTONOMOUS')
 
         required_sections = [
-            '1. COVER PAGE',
-            '2. SUBJECT & INTRODUCTION',
-            '3. PROJECT OVERVIEW',
-            '4. ABOUT AVEON INFOTECH',
-            '5. SCOPE OF WORK / PROJECT DETAILS',
-            '6. IMPLEMENTATION METHODOLOGY (PHASE-WISE)',
-            '7. PROJECT TIMELINE WITH MILESTONES',
-            '8. PROJECT INVESTMENT',
-            '9. SUPPORT & MAINTENANCE MODEL',
-            '10. DETAILED TERMS & CONDITIONS',
-            '11. WHY PARTNER WITH AVEON INFOTECH',
-            '12. AUTHORIZATION & SIGNATURE',
+            '1. SUBJECT & INTRODUCTION',
+            '2. PROJECT OVERVIEW',
+            '3. ABOUT AVEON INFOTECH',
+            '4. SCOPE OF WORK / PROJECT DETAILS',
+            '5. IMPLEMENTATION METHODOLOGY (PHASE-WISE)',
+            '6. PROJECT TIMELINE WITH MILESTONES',
+            '7. PROJECT INVESTMENT',
+            '8. SUPPORT & MAINTENANCE MODEL',
+            '9. DETAILED TERMS & CONDITIONS',
+            '10. WHY PARTNER WITH AVEON INFOTECH',
+            '11. AUTHORIZATION & SIGNATURE',
         ]
 
         proposal_text = response.context['proposal_text']
@@ -53,6 +53,7 @@ class ProposalQuotationViewTests(TestCase):
                 'client_name': 'ABC College of Arts and Science',
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'AUTONOMOUS',
+                'proposal_date': '2026-02-13',
                 'action': 'download',
             },
         )
@@ -61,8 +62,8 @@ class ProposalQuotationViewTests(TestCase):
         self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
         self.assertIn('attachment; filename="aveon_cms_erp_proposal.txt"', response['Content-Disposition'])
         text = response.content.decode('utf-8')
-        self.assertIn('1. COVER PAGE', text)
-        self.assertIn('12. AUTHORIZATION & SIGNATURE', text)
+        self.assertIn('1. SUBJECT & INTRODUCTION', text)
+        self.assertIn('11. AUTHORIZATION & SIGNATURE', text)
 
 
     def test_school_institution_type_is_available(self):
@@ -77,6 +78,7 @@ class ProposalQuotationViewTests(TestCase):
                 'client_name': 'ABC School',
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'SCHOOL',
+                'proposal_date': '2026-02-13',
                 'action': 'download_pdf',
             },
         )

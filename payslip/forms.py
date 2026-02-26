@@ -1,3 +1,5 @@
+from datetime import date
+
 from django import forms
 from django.core.exceptions import ValidationError
 
@@ -151,6 +153,11 @@ class OfferLetterForm(forms.Form):
 
 
 class ExperienceCertificateForm(forms.Form):
+    CERTIFICATE_TYPES = [
+        ("", "-- Select Certificate Type --"),
+        ("employee", "Employee Experience Letter"),
+        ("internship", "Internship Experience Certificate"),
+    ]
     TITLE_CHOICES = [
         ("Mr.", "Mr."),
         ("Ms.", "Ms."),
@@ -162,20 +169,90 @@ class ExperienceCertificateForm(forms.Form):
         ("female", "Female"),
     ]
     
-    title = forms.ChoiceField(label="Title", choices=TITLE_CHOICES)
-    employee_name_exp = forms.CharField(label="Employee Name", max_length=200)
-    employee_no = forms.CharField(label="Employee ID", max_length=100)
-    company_name_exp = forms.CharField(label="Company Name", max_length=200)
+    certificate_type = forms.ChoiceField(
+        label="Certificate Type",
+        choices=CERTIFICATE_TYPES,
+        widget=forms.Select(attrs={"id": "certificate_type"}),
+    )
+
+    # Shared
+    gender = forms.ChoiceField(label="Gender", choices=GENDER_CHOICES, required=False)
+    signatory_exp = forms.CharField(label="Signatory Name", max_length=200, required=False)
+    signatory_designation_exp = forms.CharField(label="Signatory Designation", max_length=200, required=False)
+
+    # Employee Experience Letter fields
+    title = forms.ChoiceField(label="Title", choices=TITLE_CHOICES, required=False)
+    employee_name_exp = forms.CharField(label="Employee Name", max_length=200, required=False)
+    employee_no = forms.CharField(label="Employee ID", max_length=100, required=False)
+    company_name_exp = forms.CharField(label="Company Name", max_length=200, required=False)
     join_date_exp = forms.DateField(
-        label="Joining Date", widget=forms.DateInput(attrs={"type": "date"})
+        label="Joining Date", widget=forms.DateInput(attrs={"type": "date"}), required=False
     )
     leaving_date = forms.DateField(
-        label="Leaving Date", widget=forms.DateInput(attrs={"type": "date"})
+        label="Leaving Date", widget=forms.DateInput(attrs={"type": "date"}), required=False
     )
-    gender = forms.ChoiceField(label="Gender", choices=GENDER_CHOICES)
-    designation_exp = forms.CharField(label="Designation", max_length=200)
-    signatory_exp = forms.CharField(label="Signatory Name", max_length=200)
-    signatory_designation_exp = forms.CharField(label="Signatory Designation", max_length=200)
+    designation_exp = forms.CharField(label="Designation", max_length=200, required=False)
+
+    # Internship Experience Certificate fields
+    intern_name = forms.CharField(label="Intern Name", max_length=200, required=False)
+    internship_domain = forms.CharField(
+        label="Internship Domain / Department",
+        max_length=200,
+        required=False,
+        help_text="Example: HR & Marketing, Development, Testing",
+    )
+    internship_company = forms.CharField(
+        label="Company / Firm",
+        max_length=200,
+        required=False,
+        initial="Aveon Infotech Private Limited",
+    )
+    internship_location = forms.CharField(
+        label="Location",
+        max_length=120,
+        required=False,
+        initial="CBE",
+        help_text="Example: CBE, Coimbatore",
+    )
+    internship_start_date = forms.DateField(
+        label="Internship Start Date", widget=forms.DateInput(attrs={"type": "date"}), required=False
+    )
+    internship_end_date = forms.DateField(
+        label="Internship End Date", widget=forms.DateInput(attrs={"type": "date"}), required=False
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        cert_type = (cleaned.get("certificate_type") or "").strip()
+
+        def require(field: str, label: str):
+            if not cleaned.get(field):
+                self.add_error(field, f"{label} is required.")
+
+        # Common requirements
+        if cert_type:
+            require("gender", "Gender")
+            require("signatory_exp", "Signatory Name")
+            require("signatory_designation_exp", "Signatory Designation")
+
+        if cert_type == "employee":
+            require("title", "Title")
+            require("employee_name_exp", "Employee Name")
+            require("employee_no", "Employee ID")
+            require("company_name_exp", "Company Name")
+            require("join_date_exp", "Joining Date")
+            require("leaving_date", "Leaving Date")
+            require("designation_exp", "Designation")
+
+        if cert_type == "internship":
+            require("intern_name", "Intern Name")
+            require("internship_domain", "Internship Domain / Department")
+            require("internship_company", "Company / Firm")
+            require("internship_location", "Location")
+            require("internship_start_date", "Internship Start Date")
+            require("internship_end_date", "Internship End Date")
+
+        return cleaned
 
 
 class TravelExpenseForm(forms.Form):
@@ -229,3 +306,21 @@ class ProposalQuotationForm(forms.Form):
     client_name = forms.CharField(label="Client Name", max_length=200)
     client_location = forms.CharField(label="Client Location", max_length=200)
     institution_type = forms.ChoiceField(label="Institution Type", choices=INSTITUTION_TYPES)
+    proposal_date = forms.DateField(
+        label="Proposal Date",
+        initial=date.today,
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    client_logo = forms.ImageField(label="Client Logo (Optional)", required=False)
+
+    def clean_client_logo(self):
+        file = self.cleaned_data.get("client_logo")
+        if not file:
+            return file
+        filename = file.name or ""
+        ext = _extension(filename)
+        if ext in EXECUTABLE_EXTENSIONS:
+            raise ValidationError("Executable files are not allowed.")
+        if ext not in IMAGE_EXTENSIONS:
+            raise ValidationError("Client logo must be a PNG or JPG image.")
+        return file

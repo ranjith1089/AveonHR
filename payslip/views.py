@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import re
 import uuid
+from datetime import date
 from io import BytesIO
+from pathlib import Path
+from xml.sax.saxutils import escape
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
@@ -9,8 +13,13 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_GET
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 from .forms import (
     ExperienceCertificateForm,
@@ -177,7 +186,17 @@ def experience_certificate(request: HttpRequest) -> HttpResponse:
     context["data"] = form.cleaned_data
 
     pdf_bytes = build_experience_certificate_pdf(form.cleaned_data)
-    filename = "experience_certificate.pdf"
+    cert_type = (form.cleaned_data.get("certificate_type") or "employee").strip() or "employee"
+    raw_name = ""
+    if cert_type == "internship":
+        raw_name = str(form.cleaned_data.get("intern_name") or "").strip()
+        suffix = "internship_experience_certificate"
+    else:
+        raw_name = str(form.cleaned_data.get("employee_name_exp") or "").strip()
+        suffix = "experience_letter"
+
+    safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", raw_name).strip("_") or "experience_certificate"
+    filename = f"{safe_name}_{suffix}.pdf"
 
     preview_token = _save_content(pdf_bytes, "application/pdf", filename)
     download_token = _save_content(pdf_bytes, "application/pdf", filename)
@@ -191,26 +210,61 @@ def experience_certificate(request: HttpRequest) -> HttpResponse:
 
 
 
-def _build_cms_proposal_text(client_name: str, client_location: str, institution_type: str) -> str:
-    return f"""1. COVER PAGE
+def _proposal_system_title(institution_type: str) -> str:
+    """
+    Map institution type to proposal system title.
+    - AUTONOMOUS => Aveon College Management System
+    - SCHOOL => Aveon School Management System
+    - ARTS & SCIENCE / ENGINEERING / AFFILIATED => Aveon College Management System
+    """
+    if (institution_type or "").strip().upper() == "SCHOOL":
+        return "Aveon School Management System (SMS) ERP"
+    return "Aveon College Management System (CMS) ERP"
 
-Proposal Title: Comprehensive ERP Proposal – Aveon College Management System (CMS) ERP
+
+def _renumber_main_sections(text: str) -> str:
+    """
+    Renumber only top-level headings (e.g., '2. SUBJECT...' -> '1. SUBJECT...').
+    Does NOT touch sub-sections like '5.1 ...' because those don't match 'digit-dot-space'.
+    """
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        m = re.match(r"^(\d+)\.\s+(.*)$", line)
+        if m:
+            num = int(m.group(1))
+            if num >= 2:
+                out_lines.append(f"{num - 1}. {m.group(2)}")
+                continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def _build_cms_proposal_text(
+    client_name: str,
+    client_location: str,
+    institution_type: str,
+    proposal_date: date | None = None,
+) -> str:
+    system_title = _proposal_system_title(institution_type)
+    proposal_title = f"Comprehensive ERP Proposal – {system_title}"
+    proposal_date_str = proposal_date.strftime("%d/%m/%Y") if proposal_date else "[DD/MM/YYYY]"
+
+    text = f"""Proposal Title: {proposal_title}
 Prepared By: Aveon Infotech Private Limited
 Client Name: {client_name}
 Client Location: {client_location}
 Institution Type: {institution_type}
-Date: [DD/MM/YYYY]
-Placeholders: [Aveon Logo] [Client Logo]
+Date: {proposal_date_str}
 
 2. SUBJECT & INTRODUCTION
 
-Subject: Proposal for Supply, Implementation, Training, and Support of Aveon College Management System (CMS) ERP
+Subject: Proposal for Supply, Implementation, Training, and Support of {system_title}
 
 Respected Sir/Madam,
 
 Greetings from Aveon Infotech Private Limited.
 
-We are pleased to submit this comprehensive proposal for implementation of Aveon College Management System (CMS) ERP for {client_name}, {client_location}. This proposal is prepared for consideration by the College Management, Principal, IQAC, and Purchase Committee, with specific alignment to statutory, accreditation, and institutional governance requirements in Indian higher education.
+We are pleased to submit this comprehensive proposal for implementation of {system_title} for {client_name}, {client_location}. This proposal is prepared for consideration by the Management, Principal, IQAC, and Purchase Committee, with specific alignment to statutory, accreditation, and institutional governance requirements.
 
 Our proposed platform is designed to digitize and integrate end-to-end institutional operations across admissions, academics, examination, administration, finance, compliance, and student services through a secure and scalable ERP ecosystem.
 
@@ -465,6 +519,7 @@ Designation: ______________
 Institution Seal & Signature: ____________________
 Date: _____________________
 """
+    return _renumber_main_sections(text)
 def travel_expense(request: HttpRequest) -> HttpResponse:
     context = {"form": TravelExpenseForm()}
     if request.method != "POST":
@@ -501,49 +556,214 @@ def _as_text_download_response(content: str, filename: str = "aveon_cms_erp_prop
 
 
 
-def _build_proposal_pdf_bytes(content: str) -> bytes:
+def _build_proposal_pdf_bytes(
+    content: str,
+    *,
+    proposal_title: str | None = None,
+    proposal_date: date | None = None,
+    client_logo_bytes: bytes | None = None,
+) -> bytes:
+    """
+    Render proposal text into a clean A4 PDF.
+
+    - Uses A4 page size with proper margins
+    - Adds Aveon logo (if available) in header
+    - Applies basic typography: headings, bullets, and readable spacing
+    """
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    left_margin = 40
-    top_margin = 50
-    bottom_margin = 40
-    line_height = 14
 
-    y = height - top_margin
-    for raw_line in content.splitlines():
-        line = raw_line if raw_line.strip() else " "
-        if len(line) <= 115:
-            wrapped = [line]
+    page_width, page_height = A4
+    left_margin = 18 * mm
+    right_margin = 18 * mm
+    top_margin = 26 * mm
+    bottom_margin = 18 * mm
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+        title="Aveon CMS ERP Proposal",
+        author="Aveon Infotech Pvt Ltd",
+    )
+
+    styles = getSampleStyleSheet()
+    base = ParagraphStyle(
+        "ProposalBase",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        spaceAfter=4,
+        alignment=TA_JUSTIFY,
+    )
+    mono = ParagraphStyle(
+        "ProposalMono",
+        parent=base,
+        fontName="Courier",
+        alignment=TA_LEFT,
+    )
+    h1 = ParagraphStyle(
+        "ProposalH1",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        textColor=colors.HexColor("#0f172a"),
+        spaceBefore=10,
+        spaceAfter=8,
+    )
+    h2 = ParagraphStyle(
+        "ProposalH2",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=16,
+        textColor=colors.HexColor("#111827"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    bullet_style = ParagraphStyle(
+        "ProposalBullet",
+        parent=base,
+        leftIndent=12,
+        bulletIndent=0,
+        spaceAfter=2,
+    )
+
+    section_re = re.compile(r"^\d+\.\s+")
+    phase_re = re.compile(r"^(Phase\s+\d+|Milestones|Support Coverage|Review and Governance)\b", re.IGNORECASE)
+
+    def _paragraph_from_line(line: str) -> Paragraph | None:
+        raw = line.rstrip("\n")
+        if not raw.strip():
+            return None
+
+        # Headings like "1. COVER PAGE"
+        if section_re.match(raw):
+            return Paragraph(escape(raw), h1)
+
+        # Secondary headings like "Phase 1: ..."
+        if phase_re.match(raw):
+            return Paragraph(escape(raw), h2)
+
+        # Bullets
+        stripped = raw.lstrip()
+        if stripped.startswith("- "):
+            return Paragraph(escape(stripped[2:]), bullet_style, bulletText="•")
+
+        # Key: Value formatting (keep label bold)
+        if ":" in raw:
+            label, value = raw.split(":", 1)
+            if 1 <= len(label.strip()) <= 28 and value.strip():
+                return Paragraph(f"<b>{escape(label.strip())}:</b> {escape(value.strip())}", base)
+
+        # Preserve some "code-ish" lines (placeholders, separators)
+        if raw.strip().startswith("[") and raw.strip().endswith("]"):
+            return Paragraph(escape(raw), mono)
+
+        return Paragraph(escape(raw), base)
+
+    def _header_footer(c, d) -> None:
+        c.saveState()
+        pw, ph = A4
+
+        header_top = ph - 12 * mm
+        x0 = d.leftMargin
+        x1 = pw - d.rightMargin
+
+        # Logo (best-effort)
+        logo_path = Path(settings.BASE_DIR) / "payslip" / "static" / "payslip" / "logo.png"
+        if logo_path.exists():
+            logo_h = 12 * mm
+            logo_w = 34 * mm
+            c.drawImage(
+                str(logo_path),
+                x0,
+                header_top - logo_h,
+                width=logo_w,
+                height=logo_h,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+            title_x = x0 + logo_w + 8
         else:
-            wrapped = []
-            current = []
-            for word in line.split():
-                candidate = " ".join(current + [word])
-                if len(candidate) <= 115:
-                    current.append(word)
-                else:
-                    if current:
-                        wrapped.append(" ".join(current))
-                    current = [word]
-            if current:
-                wrapped.append(" ".join(current))
+            title_x = x0
 
-        for out in wrapped:
-            if y <= bottom_margin:
-                pdf.showPage()
-                y = height - top_margin
-            pdf.drawString(left_margin, y, out)
-            y -= line_height
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColor(colors.HexColor("#0f172a"))
+        c.drawString(title_x, header_top - 9 * mm, proposal_title or "Aveon CMS ERP Proposal")
 
-    pdf.save()
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.HexColor("#475569"))
+        right_text = f"Page {d.page}"
+        if proposal_date:
+            right_text = f"{proposal_date.strftime('%d/%m/%Y')}  •  {right_text}"
+        c.drawRightString(x1, header_top - 9 * mm, right_text)
+
+        # Client logo on the right (best-effort)
+        if client_logo_bytes:
+            try:
+                img = ImageReader(BytesIO(client_logo_bytes))
+                client_h = 12 * mm
+                client_w = 34 * mm
+                c.drawImage(
+                    img,
+                    x1 - client_w,
+                    header_top - client_h,
+                    width=client_w,
+                    height=client_h,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+            except Exception:
+                # If logo parsing fails, silently skip.
+                pass
+
+        # Divider line
+        c.setStrokeColor(colors.HexColor("#e5e7eb"))
+        c.setLineWidth(1)
+        c.line(x0, ph - d.topMargin + 2 * mm, x1, ph - d.topMargin + 2 * mm)
+
+        # Footer
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.HexColor("#6b7280"))
+        c.drawString(x0, 10 * mm, "Generated via Aveon HR Suite")
+        c.restoreState()
+
+    story: list[object] = []
+    for line in content.splitlines():
+        para = _paragraph_from_line(line)
+        if para is None:
+            story.append(Spacer(1, 6))
+        else:
+            story.append(para)
+
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
     data = buffer.getvalue()
     buffer.close()
     return data
 
 
-def _as_pdf_download_response(content: str, filename: str = "aveon_cms_erp_proposal.pdf") -> HttpResponse:
-    response = HttpResponse(_build_proposal_pdf_bytes(content), content_type="application/pdf")
+def _as_pdf_download_response(
+    content: str,
+    *,
+    filename: str = "aveon_cms_erp_proposal.pdf",
+    proposal_title: str | None = None,
+    proposal_date: date | None = None,
+    client_logo_bytes: bytes | None = None,
+) -> HttpResponse:
+    response = HttpResponse(
+        _build_proposal_pdf_bytes(
+            content,
+            proposal_title=proposal_title,
+            proposal_date=proposal_date,
+            client_logo_bytes=client_logo_bytes,
+        ),
+        content_type="application/pdf",
+    )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     response["Cache-Control"] = "no-store"
     return response
@@ -553,21 +773,31 @@ def proposal_quotation(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return render(request, "payslip/proposal_quotation.html", context)
 
-    form = ProposalQuotationForm(request.POST)
+    form = ProposalQuotationForm(request.POST, request.FILES)
     if not form.is_valid():
         context["form"] = form
         return render(request, "payslip/proposal_quotation.html", context)
 
+    system_title = _proposal_system_title(form.cleaned_data["institution_type"])
+    proposal_title = f"Comprehensive ERP Proposal – {system_title}"
     proposal_text = _build_cms_proposal_text(
         form.cleaned_data["client_name"],
         form.cleaned_data["client_location"],
         form.cleaned_data["institution_type"],
+        form.cleaned_data.get("proposal_date"),
     )
 
     if request.POST.get("action") == "download":
         return _as_text_download_response(proposal_text)
     if request.POST.get("action") == "download_pdf":
-        return _as_pdf_download_response(proposal_text)
+        client_logo = form.cleaned_data.get("client_logo")
+        client_logo_bytes = client_logo.read() if client_logo else None
+        return _as_pdf_download_response(
+            proposal_text,
+            proposal_title=proposal_title,
+            proposal_date=form.cleaned_data.get("proposal_date"),
+            client_logo_bytes=client_logo_bytes,
+        )
 
     context["form"] = form
     context["proposal_text"] = proposal_text

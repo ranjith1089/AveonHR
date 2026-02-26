@@ -1,0 +1,21 @@
+#
+# Python / Django
+#
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.pyc
+
+#
+# Virtual environments
+#
+.venv/
+venv/
+env/
+
+#
+# OS / editor
+#
+.DS_Store
+Thumbs.db

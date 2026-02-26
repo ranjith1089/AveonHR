@@ -471,6 +471,13 @@ h3 {
   margin: 0;
 }
 
+.proposal-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px; /* small gap like screenshot */
+}
+
 label {
   display: block;
   color: #9CA3AF;
