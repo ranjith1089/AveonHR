@@ -16,6 +16,13 @@ class ProposalQuotationViewTests(TestCase):
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'AUTONOMOUS',
                 'proposal_date': '2026-02-13',
+                'prepared_by': 'Aveon Infotech Private Limited',
+                'per_student_annual_license': '850',
+                'minimum_student_commitment': '1000',
+                'one_time_implementation_fee': '350000',
+                'gst_percent': '18',
+                'authorized_signatory_name': 'Parvathi G',
+                'authorized_signatory_designation': 'Chief Executive Officer',
             },
         )
 
@@ -25,25 +32,24 @@ class ProposalQuotationViewTests(TestCase):
         self.assertContains(response, 'AUTONOMOUS')
 
         required_sections = [
-            '1. SUBJECT & INTRODUCTION',
-            '2. PROJECT OVERVIEW',
-            '3. ABOUT AVEON INFOTECH',
-            '4. SCOPE OF WORK / PROJECT DETAILS',
-            '5. IMPLEMENTATION METHODOLOGY (PHASE-WISE)',
-            '6. PROJECT TIMELINE WITH MILESTONES',
-            '7. PROJECT INVESTMENT',
-            '8. SUPPORT & MAINTENANCE MODEL',
-            '9. DETAILED TERMS & CONDITIONS',
-            '10. WHY PARTNER WITH AVEON INFOTECH',
-            '11. AUTHORIZATION & SIGNATURE',
+            '1. Executive Summary',
+            '2. About Aveon Infotech Private Limited',
+            '3. Scope of Work - Module Overview',
+            '4. Implementation Methodology',
+            '5. Project Timeline',
+            '6. Commercial Proposal',
+            '7. Support & Maintenance',
+            '8. Key Terms & Conditions',
+            '9. Why Aveon Infotech',
+            '10. Authorization',
         ]
 
         proposal_text = response.context['proposal_text']
         for section in required_sections:
             self.assertIn(section, proposal_text)
 
-        self.assertIn('GST @18%', proposal_text)
-        self.assertIn('Courts at Coimbatore, Tamil Nadu shall have exclusive jurisdiction.', proposal_text)
+        self.assertIn('GST: 18% Extra', proposal_text)
+        self.assertIn('INR 3,50,000', proposal_text)
 
 
     def test_post_download_returns_text_file(self):
@@ -54,6 +60,13 @@ class ProposalQuotationViewTests(TestCase):
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'AUTONOMOUS',
                 'proposal_date': '2026-02-13',
+                'prepared_by': 'Aveon Infotech Private Limited',
+                'per_student_annual_license': '850',
+                'minimum_student_commitment': '1000',
+                'one_time_implementation_fee': '350000',
+                'gst_percent': '18',
+                'authorized_signatory_name': 'Parvathi G',
+                'authorized_signatory_designation': 'Chief Executive Officer',
                 'action': 'download',
             },
         )
@@ -62,8 +75,8 @@ class ProposalQuotationViewTests(TestCase):
         self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
         self.assertIn('attachment; filename="aveon_cms_erp_proposal.txt"', response['Content-Disposition'])
         text = response.content.decode('utf-8')
-        self.assertIn('1. SUBJECT & INTRODUCTION', text)
-        self.assertIn('11. AUTHORIZATION & SIGNATURE', text)
+        self.assertIn('1. Executive Summary', text)
+        self.assertIn('10. Authorization', text)
 
 
     def test_school_institution_type_is_available(self):
@@ -79,6 +92,13 @@ class ProposalQuotationViewTests(TestCase):
                 'client_location': 'Coimbatore, Tamil Nadu',
                 'institution_type': 'SCHOOL',
                 'proposal_date': '2026-02-13',
+                'prepared_by': 'Aveon Infotech Private Limited',
+                'per_student_annual_license': '850',
+                'minimum_student_commitment': '1000',
+                'one_time_implementation_fee': '350000',
+                'gst_percent': '18',
+                'authorized_signatory_name': 'Parvathi G',
+                'authorized_signatory_designation': 'Chief Executive Officer',
                 'action': 'download_pdf',
             },
         )

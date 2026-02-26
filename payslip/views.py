@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -222,6 +223,45 @@ def _proposal_system_title(institution_type: str) -> str:
     return "Aveon College Management System (CMS) ERP"
 
 
+def _title_case_institution(institution_type: str) -> str:
+    v = (institution_type or "").strip().upper()
+    if v == "ARTS & SCIENCE":
+        return "Arts & Science"
+    if v == "AUTONOMOUS":
+        return "Autonomous"
+    if v == "AFFILIATED":
+        return "Affiliated"
+    if v == "ENGINEERING":
+        return "Engineering"
+    if v == "SCHOOL":
+        return "School"
+    return institution_type
+
+
+def _format_inr(amount: Decimal) -> str:
+    """
+    Indian-style comma formatting.
+    350000 -> 3,50,000
+    """
+    try:
+        n = int(Decimal(amount).to_integral_value())
+    except Exception:
+        return str(amount)
+    sign = "-" if n < 0 else ""
+    s = str(abs(n))
+    if len(s) <= 3:
+        return f"{sign}{s}"
+    last3 = s[-3:]
+    rest = s[:-3]
+    parts = []
+    while len(rest) > 2:
+        parts.insert(0, rest[-2:])
+        rest = rest[:-2]
+    if rest:
+        parts.insert(0, rest)
+    return f"{sign}{','.join(parts)},{last3}"
+
+
 def _renumber_main_sections(text: str) -> str:
     """
     Renumber only top-level headings (e.g., '2. SUBJECT...' -> '1. SUBJECT...').
@@ -244,282 +284,307 @@ def _build_cms_proposal_text(
     client_location: str,
     institution_type: str,
     proposal_date: date | None = None,
+    prepared_by: str | None = None,
+    per_student_annual_license: Decimal | None = None,
+    minimum_student_commitment: int | None = None,
+    one_time_implementation_fee: Decimal | None = None,
+    gst_percent: Decimal | None = None,
+    authorized_signatory_name: str | None = None,
+    authorized_signatory_designation: str | None = None,
+    jurisdiction: str | None = None,
 ) -> str:
     system_title = _proposal_system_title(institution_type)
-    proposal_title = f"Comprehensive ERP Proposal – {system_title}"
     proposal_date_str = proposal_date.strftime("%d/%m/%Y") if proposal_date else "[DD/MM/YYYY]"
+    prepared_by = (prepared_by or "Aveon Infotech Private Limited").strip()
+    client_line = f"{client_name}, {client_location}".strip().strip(",")
+    institution_label = _title_case_institution(institution_type)
 
-    text = f"""Proposal Title: {proposal_title}
-Prepared By: Aveon Infotech Private Limited
-Client Name: {client_name}
-Client Location: {client_location}
-Institution Type: {institution_type}
+    per_student = Decimal(per_student_annual_license or 0)
+    min_students = int(minimum_student_commitment or 0)
+    impl_fee = Decimal(one_time_implementation_fee or 0)
+    gst = Decimal(gst_percent or 0)
+
+    annual_license = (per_student * Decimal(min_students)) if min_students else Decimal(0)
+    subtotal = annual_license + impl_fee
+    gst_amount = (subtotal * gst / Decimal(100)) if subtotal else Decimal(0)
+    total_year1 = subtotal + gst_amount
+
+    aligned_points = [
+        "CBCS Framework",
+        "Outcome-Based Education (OBE)",
+        "NAAC Accreditation Requirements",
+        "NIRF Reporting Standards",
+        "IQAC Governance",
+    ]
+    if (institution_type or "").strip().upper() == "AUTONOMOUS":
+        aligned_points.append("Autonomous College Regulations")
+
+    jurisdiction = (jurisdiction or "").strip()
+    sign_name = (authorized_signatory_name or "").strip()
+    sign_desig = (authorized_signatory_designation or "").strip()
+
+    text = f"""{system_title}
+
+Prepared By:
+{prepared_by}
+
+Client:
+{client_line}
+
+Institution Type: {institution_label}
+
 Date: {proposal_date_str}
 
-2. SUBJECT & INTRODUCTION
+1. Executive Summary
 
-Subject: Proposal for Supply, Implementation, Training, and Support of {system_title}
+{prepared_by} is pleased to submit this proposal for the implementation of the {system_title} at {client_line}.
 
-Respected Sir/Madam,
+The proposed ERP platform is designed to digitize, integrate, and streamline the institution’s academic, administrative, financial, and compliance operations into a single secure and scalable system.
 
-Greetings from Aveon Infotech Private Limited.
+The solution is aligned with:
+{chr(10).join([f"- {p}" for p in aligned_points])}
 
-We are pleased to submit this comprehensive proposal for implementation of {system_title} for {client_name}, {client_location}. This proposal is prepared for consideration by the Management, Principal, IQAC, and Purchase Committee, with specific alignment to statutory, accreditation, and institutional governance requirements.
+This proposal is submitted for evaluation by the Management, Principal, IQAC, Finance Committee, and Purchase Committee.
 
-Our proposed platform is designed to digitize and integrate end-to-end institutional operations across admissions, academics, examination, administration, finance, compliance, and student services through a secure and scalable ERP ecosystem.
+2. About {prepared_by}
 
-3. PROJECT OVERVIEW
-
-Aveon CMS ERP is an integrated institutional platform that automates admission, academics, examination, finance, HR, hostel, library, and compliance workflows in a single system. The solution is aligned to CBCS, OBE, NAAC, NIRF, and IQAC requirements, and supports autonomous as well as affiliated colleges. With configurable role-based access, dashboards, analytics, and mobile-first communication, it ensures operational efficiency, statutory readiness, and transparent governance for higher education institutions.
-
-4. ABOUT AVEON INFOTECH
-
-Company Name: Aveon Infotech Private Limited
 Established: 2012
+Core Focus: Educational ERP & Institutional Automation
 
-Core Domain Expertise:
-- College ERP solutions
-- School ERP solutions
-- Controller of Examination (COE) automation
-- NAAC, NIRF, and IQAC support systems
-- Hostel and library management
-- Payroll and finance management
-- Institutional custom software development
+Core Expertise
+- College ERP & University ERP
+- Controller of Examination (COE) Automation
+- NAAC / NIRF / IQAC Data Systems
+- Finance & Payroll Automation
+- Hostel & Library Management
+- Custom Institutional Software Development
 
-Institutional Delivery Strengths:
-- Deep process knowledge of Indian higher-education regulations
-- Experience in implementing modules for autonomous and affiliated institutions
-- Academic workflow understanding across UG, PG, and professional programs
-- Governance-focused implementation approach suitable for purchase committees
+Institutional Strengths
+- Deep understanding of Indian Higher Education processes
+- Experience with Autonomous & Affiliated institutions
+- Governance-driven implementation methodology
+- Structured documentation and milestone-based execution
 
-5. SCOPE OF WORK / PROJECT DETAILS
+3. Scope of Work - Module Overview
 
-5.1 Admission & Student Lifecycle
-- Online admission enquiry, registration, and application workflows
-- Merit list generation and configurable admission rounds
-- Document verification and digital admission file
-- Fee challan generation and receipt tracking
-- Student profile with lifecycle coverage from admission to alumni
-- Certificate and document issue tracking
+The ERP will cover the following independent modules:
 
-5.2 Academic Management (CBCS, OBE, Open Electives)
-- Academic calendar setup and timetable management
-- Program, batch, semester, and section configuration
-- CBCS-based curriculum mapping and credit tracking
-- Open elective basket creation and student choice allocation
-- OBE framework support: CO-PO-PSO mapping and attainment analytics
-- Attendance, internal marks, assignment, and tutorial workflows
+3.1 Admission & Student Lifecycle Management
+- Online enquiry, registration, and application
+- Merit list generation
+- Admission round management
+- Document verification tracking
+- Fee challan generation
+- Digital student record (Admission to Alumni)
+- Certificate issuance tracking
 
-5.3 Learning Management System (LMS)
-- Course-wise content repository and faculty upload
-- Lesson plan tracking and session planning
-- Assignment publishing, submission, and evaluation
-- Discussion forum and academic announcement board
-- Continuous learning records for academic audit readiness
+3.2 Academic Management (CBCS / OBE Enabled)
+- Academic calendar configuration
+- Program / Semester / Section structuring
+- CBCS curriculum mapping
+- Credit tracking
+- Open elective management
+- CO–PO–PSO mapping
+- Attainment analytics
+- Attendance & internal marks management
+- Assignment workflows
 
-5.4 Controller of Examination (COE)
-- Examination timetable planning and hall allocation
-- Examination application and fee processing
-- Question paper workflow and secure exam coordination
-- Internal/external mark entry with moderation controls
-- Grade processing, SGPA/CGPA calculation, and publication
-- Revaluation, arrear, supplementary, and result history management
+3.3 Learning Management System (LMS)
+- Course-wise content upload
+- Lesson plan tracking
+- Assignment submission & evaluation
+- Discussion forums
+- Academic audit trails
 
-5.5 Finance, Fees & Accounts
-- Configurable fee heads, concessions, and installment structures
-- Student fee collection through online/offline modes
-- Receipt, ledger, and outstanding management
-- Institutional accounting workflows (income/expense/cash-bank)
-- Finance dashboards for management decision support
-- GST-ready reporting framework where applicable
+3.4 Controller of Examination (COE) Module
+- Exam timetable planning
+- Hall allocation
+- Examination application processing
+- Mark entry (Internal & External)
+- SGPA / CGPA calculation
+- Result publication
+- Revaluation & arrear management
+- Academic history records
 
-5.6 HR & Payroll
-- Employee master with service records
-- Attendance, leave, and holiday management
-- Payroll setup with earnings, deductions, and compliance components
-- Payslip generation and salary register reports
-- HR letters and service certificate workflows
+3.5 Fees Collection Module
+- Program-wise fee configuration
+- Installment structure setup
+- Scholarship & concession management
+- Online payment gateway integration
+- Offline fee collection
+- Auto receipt generation
+- Student ledger & outstanding tracking
+- Refund management
+- Real-time collection dashboard
 
-5.7 Library, Hostel, Transport, Inventory
-- Library accessioning, issue/return, and fine tracking
-- Hostel room allocation, occupancy, and mess billing support
-- Transport route, stage, and student pass management
-- Inventory purchase request, stock issue, and asset tracking
+3.6 Finance & Accounts Module
+- Income & expense tracking
+- Cash / Bank reconciliation
+- Ledger reports
+- Department-wise financial analytics
+- GST-ready reporting (if applicable)
+- Management financial dashboards
 
-5.8 NAAC / NIRF / IQAC Modules
-- NAAC criteria-wise data capture and evidence mapping
-- NIRF data templates and annual comparative analytics
-- IQAC action plan tracking and AQAR support data extraction
-- Department-wise KPI and compliance-ready reporting
+3.7 HR & Payroll Module
+- Employee master & service history
+- Attendance & leave management
+- Payroll processing
+- Payslip generation
+- Statutory reporting support
 
-5.9 Mobile Apps & Communication (SMS, WhatsApp, Email)
-- Mobile application access for students, faculty, and parents (as applicable)
-- Push notifications for attendance, fees, exam, and circulars
-- Integrated SMS/WhatsApp/Email communication workflow
-- Role-based alert subscriptions and message log audit
+3.8 Library Management Module
+- Book accession & catalog management
+- Issue / return / renewal workflows
+- Fine calculation
+- Member borrowing limits
+- Library usage reports
 
-6. IMPLEMENTATION METHODOLOGY (PHASE-WISE)
+3.9 Hostel Management Module
+- Hostel master setup
+- Room allocation & occupancy tracking
+- Mess billing support
+- Hostel fee integration
+- Visitor tracking
+- Vacancy reports
 
-Phase 1: Discovery and Requirement Sign-off
-- Stakeholder workshops with Management, Principal, IQAC, COE, Accounts, and Departments
-- As-is process study and gap analysis
-- Finalization of scope and configuration blueprint
+3.10 Transport Management Module
+- Route & stage configuration
+- Vehicle & driver management
+- Student route allocation
+- Transport fee mapping
+- Route occupancy reports
 
-Phase 2: System Configuration and Master Setup
-- Academic structure, users, role matrix, and module parameterization
-- Approval hierarchies and workflow setup
-- Template and report configuration
+3.11 Inventory & Asset Management Module
+- Item & category master
+- Purchase request workflow
+- Stock entry & issue tracking
+- Asset tagging
+- Vendor management
+- Stock reconciliation reports
 
-Phase 3: Data Preparation and Migration
-- Client submission of validated legacy data in agreed templates
-- Data quality checks and controlled import cycles
-- Reconciliation and sign-off for migrated records
+3.12 Feedback Management Module
+- NAAC-aligned questionnaire templates
+- Student → Faculty feedback
+- Student → Course feedback
+- Alumni feedback
+- Employer feedback
+- Faculty self-appraisal
+- Semester-wise feedback activation
+- Department-wise analytics
+- NAAC & IQAC report exports
 
-Phase 4: Training and User Acceptance Testing (UAT)
-- Role-based training for administrators, faculty, and non-teaching staff
-- UAT execution against agreed scenarios
-- Issue tracking, closure, and acceptance confirmation
+3.13 NAAC / NIRF / IQAC Compliance Module
+- NAAC criteria-wise structured data capture
+- Evidence document repository
+- NIRF data templates
+- AQAR report support
+- Department KPI dashboards
 
-Phase 5: Go-Live and Stabilization
-- Module-wise production rollout
-- Hypercare support during stabilization period
-- Post go-live review and optimization recommendations
+3.14 Communication & Mobile Application
+- Role-based mobile access
+- Push notifications
+- SMS / WhatsApp / Email integration
+- Communication audit logs
 
-7. PROJECT TIMELINE WITH MILESTONES
+4. Implementation Methodology
 
-Indicative Duration: 12 to 16 weeks from date of work order and receipt of initial payment
+Phase 1 – Requirement Analysis
+- Stakeholder workshops
+- Process study
+- Scope finalization
 
-Milestones:
-- Week 1-2: Requirement study and scope freeze
-- Week 3-5: System configuration and workflow setup
-- Week 6-8: Data migration cycle and validation
-- Week 9-11: Training and UAT sign-off
-- Week 12-16: Go-live and stabilization
+Phase 2 – Configuration & Setup
+- Academic structure configuration
+- Role & workflow setup
 
-Delay Disclaimer:
-- Timeline is subject to timely client-side approvals, data submission, and nodal coordination.
-- Any delay in feedback, incomplete data, change requests beyond signed scope, or postponement of training schedules shall proportionately extend delivery timelines without penalty to Aveon Infotech Private Limited.
+Phase 3 – Data Migration
+- Template-based data submission
+- Validation & reconciliation
+- Client sign-off
 
-8. PROJECT INVESTMENT
+Phase 4 – Training & UAT
+- Role-based training sessions
+- UAT execution
+- Issue closure
 
-8.1 Commercial Model (Indicative)
-- Per Student Pricing (Annual SaaS License): INR 850 per student per academic year
-- Minimum Billing Commitment: 1,000 students
-- One-Time Implementation Charges: INR 3,50,000
-- Applicable GST: 18% extra on all commercial values
+Phase 5 – Go-Live & Stabilization
+- Production rollout
+- Hypercare support
+- Performance review
 
-8.2 Illustration (for 1,000 students)
-- Annual License: INR 8,50,000
-- Implementation: INR 3,50,000
-- Subtotal: INR 12,00,000
-- GST @18%: INR 2,16,000
-- Total (Year 1): INR 14,16,000
+5. Project Timeline
 
-8.3 Payment Milestones
-- 40% of implementation + 100% first-year license: Along with work order / PO release
-- 40% of implementation: On completion of configuration and data migration stage
-- 20% of implementation: On go-live and UAT sign-off
-- Renewal license (from Year 2 onwards): Payable in advance before start of academic year
+Estimated Duration: 12 – 16 Weeks
 
-9. SUPPORT & MAINTENANCE MODEL
+Phase                         Duration
+Requirement Study              Week 1–2
+Configuration                  Week 3–5
+Data Migration                 Week 6–8
+Training & UAT                 Week 9–11
+Go-Live                        Week 12–16
 
-Support Coverage:
-- Helpdesk support through ticketing/email/phone during business hours
-- Priority-based issue response and resolution tracking
-- Functional assistance for configured workflows
-- Minor version updates and performance improvements
+Timeline subject to timely approvals and data submission.
 
-Review and Governance:
-- Periodic review meetings with designated institutional coordinators
-- Support MIS and closure reports
-- Optional annual health-check and optimization advisory
+6. Commercial Proposal
 
-10. DETAILED TERMS & CONDITIONS
+Pricing Model
+- Per Student Annual SaaS License: INR {_format_inr(per_student)}
+- Minimum Student Commitment: {min_students}
+- One-Time Implementation Fee: INR {_format_inr(impl_fee)}
+- GST: {gst}% Extra
 
-10.1 Commercial & GST
-- All prices are in Indian Rupees (INR).
-- GST shall be charged extra at 18% as applicable under law.
-- Statutory changes in taxation, if any, shall be additionally applicable.
+Year 1 Cost Illustration ({min_students} Students)
+Component                     Amount
+License                        INR {_format_inr(annual_license)}
+Implementation                 INR {_format_inr(impl_fee)}
+Subtotal                       INR {_format_inr(subtotal)}
+GST ({gst}%)                    INR {_format_inr(gst_amount)}
+Total (Year 1)                 INR {_format_inr(total_year1)}
 
-10.2 Payment Terms
-- Payments are due as per agreed milestone schedule.
-- Delayed payments may attract service suspension and applicable delay charges after written notice.
-- Purchase order/work order must clearly mention scope, commercials, and tax details.
+Payment Terms
+- 40% Implementation + 100% License – At Work Order
+- 40% Implementation – After Configuration & Migration
+- 20% Implementation – At Go-Live
+- Renewal – Before start of academic year
 
-10.3 Scope & Customization
-- Proposal scope is limited to modules and features explicitly specified herein.
-- Additional features, custom reports, integrations, or process changes not in signed scope shall be treated as change requests and commercially evaluated separately.
+7. Support & Maintenance
+- Business-hour helpdesk support
+- Ticket-based issue management
+- Minor upgrades included
+- Periodic review meetings
+- Optional annual system health-check
 
-10.4 Data Migration Responsibility
-- Client shall provide accurate, complete, and validated data in prescribed templates.
-- Aveon shall perform migration based on submitted data; data correctness remains client responsibility.
-- Rework due to inaccurate/incomplete data shall be handled as additional effort.
+8. Key Terms & Conditions
+- GST applicable as per law
+- Scope limited to listed modules
+- Additional customization treated as change request
+- Data accuracy responsibility rests with client
+- Third-party services billed separately
+- Intellectual Property remains with Aveon
+- Liability limited to fees received
+{f"- Jurisdiction: {jurisdiction}" if jurisdiction else ""}
 
-10.5 Implementation Sign-off
-- Module completion shall be deemed accepted upon UAT sign-off by authorized client representative.
-- If sign-off is delayed beyond 10 working days after successful demonstration/UAT closure without documented critical defects, milestone acceptance shall be considered deemed sign-off.
+9. Why Aveon Infotech
+- 14+ Years ERP Experience
+- Autonomous College Expertise
+- Accreditation-Ready Architecture
+- Governance-Based Implementation
+- Scalable & Secure Platform
+- Long-Term Institutional Partnership Approach
 
-10.6 Training
-- Role-based training sessions are included as per agreed implementation plan.
-- Additional training batches, refresher programs, or off-schedule sessions may be chargeable.
+10. Authorization
 
-10.7 Third-Party Integrations
-- SMS, WhatsApp, payment gateway, biometric, and other third-party services require active subscriptions/licenses from respective providers.
-- Third-party downtime, API policy changes, or vendor service limitations are outside Aveon liability.
+For
+{prepared_by}
 
-10.8 Hosting & Security
-- Hosting may be cloud/on-premise as mutually agreed.
-- Client shall ensure required infrastructure readiness for on-premise deployments.
-- Aveon follows reasonable industry-standard controls for access, backup, and application security within agreed hosting model.
+Authorized Signatory
+{sign_name}
+{sign_desig}
 
-10.9 Intellectual Property
-- Pre-existing platform IP, source framework, templates, and reusable components remain sole property of Aveon Infotech Private Limited.
-- Client receives usage rights for subscribed term and agreed scope.
-
-10.10 Confidentiality
-- Both parties shall maintain confidentiality of non-public business, academic, technical, and student data shared during engagement.
-- Confidential information shall not be disclosed to third parties except as required by law.
-
-10.11 Limitation of Liability
-- Aveon’s aggregate liability under this engagement shall be limited to fees received by Aveon for the affected service period, excluding indirect, incidental, consequential, or punitive damages.
-
-10.12 Termination
-- Either party may terminate for material breach upon written notice and cure period of 30 days.
-- Fees for services rendered up to termination date remain payable.
-- Data handover/support at exit shall be provided as per agreed disengagement terms.
-
-10.13 Governing Law & Jurisdiction
-- This proposal and resulting contract shall be governed by the laws of India.
-- Courts at Coimbatore, Tamil Nadu shall have exclusive jurisdiction.
-
-11. WHY PARTNER WITH AVEON INFOTECH
-
-- Proven institutional ERP capability since 2012
-- Domain-led understanding of NAAC, NIRF, IQAC, CBCS, and OBE
-- Structured implementation suitable for governing bodies and purchase committees
-- Strong blend of academic, administrative, and compliance automation
-- Scalable, secure, and support-oriented delivery model
-- Long-term partnership approach focused on measurable institutional outcomes
-
-12. AUTHORIZATION & SIGNATURE
-
-For Aveon Infotech Private Limited
-
-Authorized Signatory:
-Parvathi G
-Chief Executive Officer (CEO)
-
-Date: ____________________
-Place: ___________________
-
-Acknowledgement by Client:
-
-Name: ____________________
-Designation: ______________
-Institution Seal & Signature: ____________________
-Date: _____________________
+Date: ___________
+Place: ___________
 """
-    return _renumber_main_sections(text)
+    return text
 def travel_expense(request: HttpRequest) -> HttpResponse:
     context = {"form": TravelExpenseForm()}
     if request.method != "POST":
@@ -679,10 +744,11 @@ def _build_proposal_pdf_bytes(
         if logo_path.exists():
             logo_h = 12 * mm
             logo_w = 34 * mm
+            logo_y = header_top - logo_h + 1 * mm
             c.drawImage(
                 str(logo_path),
                 x0,
-                header_top - logo_h,
+                logo_y,
                 width=logo_w,
                 height=logo_h,
                 preserveAspectRatio=True,
@@ -709,10 +775,11 @@ def _build_proposal_pdf_bytes(
                 img = ImageReader(BytesIO(client_logo_bytes))
                 client_h = 12 * mm
                 client_w = 34 * mm
+                client_y = header_top - client_h + 1 * mm
                 c.drawImage(
                     img,
                     x1 - client_w,
-                    header_top - client_h,
+                    client_y,
                     width=client_w,
                     height=client_h,
                     preserveAspectRatio=True,
@@ -725,7 +792,10 @@ def _build_proposal_pdf_bytes(
         # Divider line
         c.setStrokeColor(colors.HexColor("#e5e7eb"))
         c.setLineWidth(1)
-        c.line(x0, ph - d.topMargin + 2 * mm, x1, ph - d.topMargin + 2 * mm)
+        # Keep the divider just above the content frame,
+        # and below the logo so it doesn't look "cut" or overlapped.
+        divider_y = ph - d.topMargin + 1 * mm
+        c.line(x0, divider_y, x1, divider_y)
 
         # Footer
         c.setFont("Helvetica", 8)
@@ -734,6 +804,8 @@ def _build_proposal_pdf_bytes(
         c.restoreState()
 
     story: list[object] = []
+    # Add a bit of breathing room under the header divider.
+    story.append(Spacer(1, 8))
     for line in content.splitlines():
         para = _paragraph_from_line(line)
         if para is None:
@@ -778,13 +850,19 @@ def proposal_quotation(request: HttpRequest) -> HttpResponse:
         context["form"] = form
         return render(request, "payslip/proposal_quotation.html", context)
 
-    system_title = _proposal_system_title(form.cleaned_data["institution_type"])
-    proposal_title = f"Comprehensive ERP Proposal – {system_title}"
     proposal_text = _build_cms_proposal_text(
         form.cleaned_data["client_name"],
         form.cleaned_data["client_location"],
         form.cleaned_data["institution_type"],
         form.cleaned_data.get("proposal_date"),
+        form.cleaned_data.get("prepared_by"),
+        form.cleaned_data.get("per_student_annual_license"),
+        form.cleaned_data.get("minimum_student_commitment"),
+        form.cleaned_data.get("one_time_implementation_fee"),
+        form.cleaned_data.get("gst_percent"),
+        form.cleaned_data.get("authorized_signatory_name"),
+        form.cleaned_data.get("authorized_signatory_designation"),
+        form.cleaned_data.get("jurisdiction"),
     )
 
     if request.POST.get("action") == "download":
@@ -792,9 +870,10 @@ def proposal_quotation(request: HttpRequest) -> HttpResponse:
     if request.POST.get("action") == "download_pdf":
         client_logo = form.cleaned_data.get("client_logo")
         client_logo_bytes = client_logo.read() if client_logo else None
+        pdf_header_title = _proposal_system_title(form.cleaned_data["institution_type"])
         return _as_pdf_download_response(
             proposal_text,
-            proposal_title=proposal_title,
+            proposal_title=pdf_header_title,
             proposal_date=form.cleaned_data.get("proposal_date"),
             client_logo_bytes=client_logo_bytes,
         )

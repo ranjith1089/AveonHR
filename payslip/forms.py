@@ -303,13 +303,59 @@ class ProposalQuotationForm(forms.Form):
         ("SCHOOL", "SCHOOL"),
     ]
 
-    client_name = forms.CharField(label="Client Name", max_length=200)
+    client_name = forms.CharField(label="Client", max_length=200)
     client_location = forms.CharField(label="Client Location", max_length=200)
     institution_type = forms.ChoiceField(label="Institution Type", choices=INSTITUTION_TYPES)
     proposal_date = forms.DateField(
         label="Proposal Date",
         initial=date.today,
         widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    prepared_by = forms.CharField(
+        label="Prepared By",
+        max_length=200,
+        initial="Aveon Infotech Private Limited",
+    )
+
+    per_student_annual_license = forms.DecimalField(
+        label="Per Student Annual SaaS License (INR)",
+        max_digits=12,
+        decimal_places=2,
+        initial=850,
+    )
+    minimum_student_commitment = forms.IntegerField(
+        label="Minimum Student Commitment",
+        min_value=1,
+        initial=1000,
+    )
+    one_time_implementation_fee = forms.DecimalField(
+        label="One-Time Implementation Fee (INR)",
+        max_digits=12,
+        decimal_places=2,
+        initial=350000,
+    )
+    gst_percent = forms.DecimalField(
+        label="GST (%)",
+        max_digits=5,
+        decimal_places=2,
+        initial=18,
+    )
+
+    authorized_signatory_name = forms.CharField(
+        label="Authorized Signatory Name",
+        max_length=200,
+        initial="Parvathi G",
+    )
+    authorized_signatory_designation = forms.CharField(
+        label="Authorized Signatory Designation",
+        max_length=200,
+        initial="Chief Executive Officer",
+    )
+    jurisdiction = forms.CharField(
+        label="Jurisdiction",
+        max_length=200,
+        initial="Coimbatore, Tamil Nadu",
+        required=False,
     )
     client_logo = forms.ImageField(label="Client Logo (Optional)", required=False)
 
@@ -324,3 +370,21 @@ class ProposalQuotationForm(forms.Form):
         if ext not in IMAGE_EXTENSIONS:
             raise ValidationError("Client logo must be a PNG or JPG image.")
         return file
+
+    def clean(self):
+        cleaned = super().clean()
+
+        def positive(field: str, label: str):
+            val = cleaned.get(field)
+            if val is None:
+                return
+            try:
+                if float(val) <= 0:
+                    self.add_error(field, f"{label} must be greater than 0.")
+            except Exception:
+                self.add_error(field, f"{label} is invalid.")
+
+        positive("per_student_annual_license", "Per Student Annual SaaS License")
+        positive("one_time_implementation_fee", "One-Time Implementation Fee")
+        positive("gst_percent", "GST (%)")
+        return cleaned
